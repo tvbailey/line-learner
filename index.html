@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1d2433">
+<title>Line Learner voice test</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root { --bg: #f6f4ef; --fg: #1d2433; --muted: #5d6475; --card: #ffffff; --line: #d9d5cb;
+          --mine: #fff3c4; --now: #2f6fde; --ok: #1f7a3d; --bad: #b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171f; --fg: #eceff5; --muted: #9aa3b5; --card: #1d2230; --line: #333a4b;
+            --mine: #3a3418; --now: #6b9cff; --ok: #5cc27f; --bad: #ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; font-size: 0.95rem; }
+  .status { font-size: 1.6rem; font-weight: 700; padding: 14px 16px; border-radius: 12px;
+            background: var(--card); border: 2px solid var(--line); margin-bottom: 12px; }
+  .status.listening { border-color: var(--now); }
+  .status.paused { border-color: var(--bad); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  button { font: inherit; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--line);
+           background: var(--card); color: var(--fg); min-height: 48px; }
+  button.primary { background: var(--now); color: #fff; border-color: var(--now); }
+  .script { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+  .ln { padding: 8px 10px; border-radius: 8px; margin: 2px 0; }
+  .ln .who { font-weight: 700; font-size: 0.8rem; letter-spacing: 0.04em; color: var(--muted); display: block; }
+  .ln.mine { background: var(--mine); }
+  .ln.song { font-style: italic; color: var(--muted); }
+  .ln.now { outline: 3px solid var(--now); }
+  .ln .heard { display: block; font-size: 0.9rem; margin-top: 4px; }
+  .ln .heard.ok { color: var(--ok); } .ln .heard.bad { color: var(--bad); }
+  details { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  summary { font-weight: 700; cursor: pointer; }
+  label { display: block; margin: 10px 0 4px; }
+  input[type=range], select { width: 100%; font: inherit; }
+  ol { padding-left: 1.3em; } li { margin: 6px 0; }
+  #log { font: 13px/1.35 ui-monospace, Consolas, monospace; white-space: pre-wrap; max-height: 260px;
+         overflow-y: auto; background: var(--bg); padding: 8px; border-radius: 8px; }
+  #sim { display: none; gap: 8px; margin-bottom: 12px; }
+  #sim input { flex: 1; font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Line Learner: voice test</h1>
+  <p class="sub">A short made-up scene to check that the phone can be your scene partner. You are the Old Man.</p>
+
+  <div id="status" class="status">Tap Start</div>
+  <div class="controls">
+    <button id="start" class="primary">Start</button>
+    <button id="pause">Pause</button>
+    <button id="repeat">Repeat cue</button>
+    <button id="lineBtn">Line</button>
+    <button id="copy">Copy report</button>
+  </div>
+  <div id="sim"><input id="simText" placeholder="Type what you would say"><button id="simSay">Say</button></div>
+
+  <div id="script" class="script"></div>
+
+  <details open>
+    <summary>What to try (about five minutes)</summary>
+    <ol>
+      <li>Tap <b>Start</b> and allow the microphone. The phone reads Mother's line; say yours when it goes quiet.</li>
+      <li>On one of your lines, say <b>"line"</b> instead. It gives the first few words. Say "line" again for the whole line.</li>
+      <li>On the line marked <i>(pause)</i>, stop for about three seconds in the middle. Does it wait, or jump ahead? If it jumps, raise the "wait before moving on" setting below.</li>
+      <li>Say <b>"pause"</b> on its own; then say <b>"resume"</b>. Say <b>"repeat"</b> to hear the last cue again.</li>
+      <li>Two of your lines contain the word "pause" in a sentence. It should <i>not</i> pause there.</li>
+      <li>Run it once more in the car, phone in the dash mount.</li>
+      <li>Tap <b>Copy report</b> and paste it to Reginald, with a sentence on how it felt.</li>
+    </ol>
+  </details>
+
+  <details>
+    <summary>Settings</summary>
+    <label for="gap">Wait before moving on: <span id="gapVal">1.5</span> seconds</label>
+    <input id="gap" type="range" min="0.8" max="4" step="0.1" value="1.5">
+    <label for="voice">Voice for the other parts</label>
+    <select id="voice"></select>
+    <label id="localWrap" hidden><input id="local" type="checkbox"> Try on-phone listening (experimental; keeps audio off Google's servers if it works)</label>
+  </details>
+
+  <details>
+    <summary>Event log</summary>
+    <div id="log"></div>
+  </details>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

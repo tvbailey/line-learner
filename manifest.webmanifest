@@ -1,0 +1,9 @@
+{
+  "name": "Line Learner",
+  "short_name": "Lines",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1d2433",
+  "theme_color": "#1d2433",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

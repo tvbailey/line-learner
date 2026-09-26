@@ -1,0 +1,322 @@
+// Line Learner voice test: browser glue around core.js.
+// Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections } from './core.js';
+
+// An original practice scene (not from any licensed script). You are the Old Man.
+const SCENE = [
+  { who: 'MOTHER', text: 'Dinner is on the table, and it is getting cold.' },
+  { who: 'OLD MAN', text: 'Hold your horses. I am in the middle of a very delicate operation.' },
+  { who: 'MOTHER', text: 'You have been in the middle of it since Tuesday.' },
+  { who: 'OLD MAN', text: 'Great inventions take time. Edison did not rush the light bulb.' },
+  { who: 'MOTHER', text: 'Edison did not set the kitchen curtains on fire.' },
+  { who: 'OLD MAN', text: 'That was one small spark (pause) and a learning experience.' },
+  { who: 'MOTHER', text: 'Wash your hands. And do not stop at the door to admire your work.' },
+  { who: 'OLD MAN', text: 'I never pause. I am a man of action.' },
+  { song: 'A Man of Action' },
+  { who: 'OLD MAN', text: 'A man of action never waits around.' },
+  { skip: true },
+  { who: 'MOTHER', text: 'Very nice, dear. Now wash your hands.' },
+  { who: 'OLD MAN', text: 'Fine. But we will pause this conversation, not end it.' },
+];
+const ME = 'OLD MAN';
+
+const params = new URLSearchParams(location.search);
+const SIM = params.has('sim');
+const $ = (id) => document.getElementById(id);
+const t0 = Date.now();
+const logLines = [];
+
+function log(msg) {
+  const line = `${((Date.now() - t0) / 1000).toFixed(1).padStart(6)}s  ${msg}`;
+  logLines.push(line);
+  const el = $('log');
+  el.textContent += line + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(text, cls = '') {
+  $('status').textContent = text;
+  $('status').className = 'status ' + cls;
+}
+
+// ---------- script display ----------
+function renderScript() {
+  $('script').innerHTML = '';
+  SCENE.forEach((ln, i) => {
+    const div = document.createElement('div');
+    div.id = 'ln' + i;
+    if (ln.song) { div.className = 'ln song'; div.textContent = `Song: ${ln.song}`; }
+    else if (ln.skip) { div.className = 'ln song'; div.textContent = '(skip to the end of the song)'; }
+    else {
+      div.className = 'ln' + (ln.who === ME ? ' mine' : '');
+      const who = document.createElement('span');
+      who.className = 'who'; who.textContent = ln.who;
+      div.append(who, document.createTextNode(ln.text));
+    }
+    $('script').append(div);
+  });
+}
+
+function highlight(i) {
+  document.querySelectorAll('.ln.now').forEach((el) => el.classList.remove('now'));
+  const el = $('ln' + i);
+  if (el) { el.classList.add('now'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+}
+
+function showHeard(i, heard, result, prompted) {
+  const el = $('ln' + i);
+  const span = document.createElement('span');
+  const ok = result.match && !prompted;
+  span.className = 'heard ' + (ok ? 'ok' : 'bad');
+  let note = `Heard: "${heard}"`;
+  if (prompted) note += ' (you asked for "line")';
+  if (!result.match) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
+  span.textContent = note;
+  el.append(span);
+}
+
+// ---------- speaking ----------
+let voice = null;
+function loadVoices() {
+  if (!('speechSynthesis' in window)) return;
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('en'));
+  const sel = $('voice');
+  const current = sel.value;
+  sel.innerHTML = '';
+  voices.forEach((v, n) => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = `${v.name} (${v.lang})`;
+    sel.append(o);
+  });
+  if (current) sel.value = current;
+  voice = voices[Number(sel.value) || 0] || null;
+  sel.onchange = () => { voice = voices[Number(sel.value)] || null; };
+  log(`voices available: ${voices.length}`);
+}
+
+let speaking = false;
+function speak(text) {
+  return new Promise((resolve) => {
+    speaking = true;
+    const done = (why) => { if (!speaking) return; speaking = false; clearTimeout(timer); if (why) log(`speech ${why}`); resolve(); };
+    // Chrome sometimes never fires "end"; don't hang the scene waiting for it.
+    const timer = setTimeout(() => done(SIM ? '' : 'timed out (no end event)'), SIM ? 300 : text.length * 90 + 3000);
+    if (SIM || !('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    if (voice) u.voice = voice;
+    u.onend = () => done();
+    u.onerror = (e) => done(`error: ${e.error}`);
+    speechSynthesis.speak(u);
+  });
+}
+
+// ---------- listening ----------
+const Recognition = SIM ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
+let rec = null;
+let wantListening = false;
+let earlierSessions = [];
+let currentResults = [];
+let lastSpeechAt = 0;
+let restarts = 0;
+let micBlocked = false;
+
+// In continuous mode Android can repeat earlier words inside later results; keep only the longest of a growing run.
+function dedupe(results) {
+  const out = [];
+  for (const r of results) {
+    const prev = out[out.length - 1];
+    if (prev && r.text.trim().toLowerCase().startsWith(prev.text.trim().toLowerCase())) out[out.length - 1] = r;
+    else out.push(r);
+  }
+  return out;
+}
+
+function heardText() { return assembleTranscript(earlierSessions, currentResults); }
+function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; }
+
+function startListening() {
+  wantListening = true;
+  if (SIM) return;
+  if (!Recognition) { setStatus('This browser cannot listen. Use Chrome.', 'paused'); return; }
+  rec = new Recognition();
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.continuous = $('continuous').checked;
+  if ($('local').checked) rec.processLocally = true;
+  rec.onresult = (e) => {
+    currentResults = dedupe(Array.from(e.results).map((r) => ({ final: r.isFinal, text: r[0].transcript })));
+    lastSpeechAt = Date.now();
+  };
+  rec.onerror = (e) => {
+    log(`listening error: ${e.error}`);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      micBlocked = true; wantListening = false;
+      setStatus('Microphone blocked. Allow it in Chrome settings.', 'paused');
+    }
+  };
+  rec.onend = () => {
+    if (currentResults.length) earlierSessions.push(currentResults.map((r) => r.text).join(' '));
+    currentResults = [];
+    if (wantListening && !micBlocked) {
+      restarts++;
+      log(`listening stopped by the phone; restarting (#${restarts})`);
+      setTimeout(() => { if (wantListening) startListening(); }, 100);
+    }
+  };
+  try { rec.start(); } catch (err) { log(`start failed: ${err.message}`); }
+}
+
+function stopListening() {
+  wantListening = false;
+  if (rec) { rec.onend = null; try { rec.abort(); } catch (_) { /* already stopped */ } rec = null; }
+}
+
+// ---------- the scene ----------
+let running = false;
+let paused = false;
+let lastCue = '';
+let tapCommand = null;
+
+function gapMs() { return Number($('gap').value) * 1000; }
+
+async function sayOther(text) {
+  stopListening();
+  setStatus('Reading the cue...');
+  await speak(stripDirections(text));
+}
+
+// Wait for one of his lines, handling commands, until he says a real line.
+function awaitMyLine(expected) {
+  return new Promise((resolve) => {
+    let promptLevel = 0;
+    let busy = false;
+    resetHeard();
+    startListening();
+    setStatus('Your line. Listening...', 'listening');
+    const tick = setInterval(async () => {
+      if (busy || speaking) return;
+      let cmd = tapCommand; tapCommand = null;
+      let utterance = '';
+      if (!cmd) {
+        utterance = heardText();
+        if (!isLineFinished({ heardSomething: utterance.length > 0, lastSpeechAt, now: Date.now(), gapMs: gapMs() })) return;
+        cmd = detectCommand(utterance);
+        resetHeard();
+      }
+      busy = true;
+      if (paused && cmd !== 'resume' && cmd !== 'pause') { busy = false; return; }
+      if (cmd === 'pause') { paused = !paused; log(paused ? 'paused' : 'resumed'); setStatus(paused ? 'Paused. Say "resume".' : 'Your line. Listening...', paused ? 'paused' : 'listening'); busy = false; return; }
+      if (cmd === 'resume') { if (paused) { paused = false; log('resumed'); } setStatus('Your line. Listening...', 'listening'); busy = false; return; }
+      if (cmd === 'line' || cmd === 'repeat') {
+        const text = cmd === 'line' ? promptText(expected, ++promptLevel) : lastCue;
+        log(cmd === 'line' ? `prompt level ${promptLevel}` : 'repeating the cue');
+        stopListening();
+        await speak(text);
+        resetHeard();
+        startListening();
+        setStatus('Your line. Listening...', 'listening');
+        busy = false;
+        return;
+      }
+      clearInterval(tick);
+      stopListening();
+      resolve({ heard: utterance, prompted: promptLevel > 0 });
+    }, 150);
+  });
+}
+
+async function runScene() {
+  if (running) return;
+  running = true; paused = false; restarts = 0;
+  renderScript();
+  await keepAwake();
+  log(`scene start; wait setting ${$('gap').value}s; continuous ${$('continuous').checked}; on-phone ${$('local').checked}`);
+  for (let i = 0; i < SCENE.length && running; i++) {
+    const ln = SCENE[i];
+    highlight(i);
+    if (ln.song) { await sayOther(`Song. ${ln.song}.`); continue; }
+    if (ln.skip) { await sayOther('Skipping to the end of the song.'); continue; }
+    if (ln.who !== ME) { lastCue = stripDirections(ln.text); await sayOther(ln.text); continue; }
+    const expected = stripDirections(ln.text);
+    const { heard, prompted } = await awaitMyLine(expected);
+    const result = compareLine(expected, heard);
+    log(`line ${i}: ${result.match ? 'matched' : 'differs'}${prompted ? ', prompted' : ''}`);
+    showHeard(i, heard, result, prompted);
+  }
+  stopListening();
+  running = false;
+  log(`scene end; listening restarts: ${restarts}`);
+  setStatus('Scene done. Tap Copy report.');
+}
+
+// ---------- screen awake, network ----------
+let wakeLock = null;
+async function keepAwake() {
+  if (!('wakeLock' in navigator)) { log('screen wake lock: not supported'); return; }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    log('screen wake lock: on');
+    wakeLock.addEventListener('release', () => log('screen wake lock: released'));
+  } catch (err) { log(`screen wake lock failed: ${err.message}`); }
+}
+document.addEventListener('visibilitychange', () => {
+  log(`page ${document.visibilityState}`);
+  if (document.visibilityState === 'visible' && running) keepAwake();
+});
+window.addEventListener('offline', () => log('network: offline'));
+window.addEventListener('online', () => log('network: online'));
+
+// ---------- report ----------
+async function copyReport() {
+  const report = [
+    'Line Learner voice test report',
+    `when: ${new Date().toString()}`,
+    `browser: ${navigator.userAgent}`,
+    `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
+    `settings: wait ${$('gap').value}s, continuous ${$('continuous').checked}, on-phone ${$('local').checked}`,
+    `listening restarts: ${restarts}`,
+    '', ...logLines,
+  ].join('\n');
+  try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.'); }
+  catch (_) { setStatus('Copy failed; open the Event log and copy it by hand.', 'paused'); }
+}
+
+// ---------- setup ----------
+async function setup() {
+  renderScript();
+  $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; };
+  $('start').onclick = runScene;
+  $('pause').onclick = () => { tapCommand = paused ? 'resume' : 'pause'; };
+  $('repeat').onclick = () => { tapCommand = 'repeat'; };
+  $('lineBtn').onclick = () => { tapCommand = 'line'; };
+  $('copy').onclick = copyReport;
+
+  const cont = document.createElement('label');
+  cont.innerHTML = '<input id="continuous" type="checkbox"> Continuous listening (compare on and off in the test)';
+  $('localWrap').before(cont);
+
+  if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (R && 'processLocally' in R.prototype) {
+    $('localWrap').hidden = false;
+    if (typeof R.available === 'function') {
+      try { log(`on-phone listening: ${await R.available({ langs: ['en-US'], processLocally: true })}`); }
+      catch (err) { log(`on-phone check failed: ${err.message}`); }
+    }
+  } else log('on-phone listening: not offered by this browser');
+  if (!R && !SIM) setStatus('This browser cannot listen. Open it in Chrome.', 'paused');
+
+  if (SIM) {
+    $('sim').style.display = 'flex';
+    $('simSay').onclick = () => {
+      currentResults = [...currentResults, { final: true, text: $('simText').value }];
+      lastSpeechAt = Date.now();
+      $('simText').value = '';
+    };
+    log('simulation mode: type instead of speaking');
+  }
+  log('ready');
+}
+
+setup();
