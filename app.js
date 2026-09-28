@@ -70,7 +70,7 @@ function loadScriptText(text, source) {
 
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
-  steps = planScene(scene.items, me);
+  steps = planScene(scene.items, me, { skipSongs: $('skipSongs').checked });
   $('script').innerHTML = '';
   steps.forEach((st, i) => {
     if (st.action === 'cue') return;
@@ -327,6 +327,8 @@ async function copyReport() {
 
 // ---------- setup ----------
 async function setup() {
+  $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
+  $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
   $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };

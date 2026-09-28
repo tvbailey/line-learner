@@ -38,6 +38,8 @@
   .ln.skipped { opacity: 0.55; }
   .pick { display: flex; gap: 8px; margin-bottom: 12px; } .pick select { flex: 1; min-height: 48px; }
   .file { display: inline-block; }
+  .toggle { display: flex; gap: 10px; align-items: center; margin: -4px 0 12px; font-size: 0.95rem; }
+  .toggle input { width: 22px; height: 22px; }
   details { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   summary { font-weight: 700; cursor: pointer; }
   label { display: block; margin: 10px 0 4px; }
@@ -54,6 +56,7 @@
   <h1>Line Learner</h1>
   <p class="sub">Your phone reads the other parts; you say yours. Say "line" if you're stuck.</p>
   <div class="pick"><select id="scene" aria-label="Scene"></select></div>
+  <label class="toggle"><input id="skipSongs" type="checkbox" checked> Dialogue only (skip everything inside songs)</label>
 
   <div id="status" class="status">Tap Start</div>
   <div class="controls">
@@ -75,7 +78,7 @@
 
   <details>
     <summary>How it works</summary>
-    <p>Songs: you practice the first two sung lines after each lead-in; the rest of the song is skipped, and the last sung line before your next spoken line is read as your cue. After a scene, green lines matched, orange lines were probably the phone mishearing you, red lines need work.</p>
+    <p>With <b>Dialogue only</b> on, the phone skips everything between a song's start and end, spoken lines inside the song included, and picks up at the next dialogue. With it off: you practice the first two sung lines after each lead-in; the rest of the song is skipped, and the last sung line before your next spoken line is read as your cue. After a scene, green lines matched, orange lines were probably the phone mishearing you, red lines need work.</p>
   </details>
 
   <details>

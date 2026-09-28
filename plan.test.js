@@ -39,3 +39,16 @@ test('a line shared with others ("THE OLD MAN & MOTHER") is mine to say', () => 
 test('a name that only contains mine is not mine ("THE OLD MANAGER")', () => {
   assert.deepEqual(plan('# S\nTHE OLD MANAGER: Hi.\n'), ['speak:Hi.']);
 });
+
+const planSkipping = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN', { skipSongs: true })
+  .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
+
+test('with songs skipped, everything inside a song is skipped, spoken lines included', () => {
+  assert.deepEqual(planSkipping('# S\nMOTHER: Nice.\n[SONG: G]\nTHE OLD MAN: ~ ONE\nTHE OLD MAN: Oh, Peter Pan.\nMOTHER: ~ TWO\n[END SONG]\nMOTHER: Boys, breakfast!\nTHE OLD MAN: Quiet!\n'),
+    ['speak:Nice.', 'speak:G', 'skip:ONE', 'skip:Oh, Peter Pan.', 'skip:TWO', 'show:songEnd', 'speak:Boys, breakfast!', 'listen:Quiet!']);
+});
+
+test('with songs skipped, a line right after the song gets the song\'s last line as its cue', () => {
+  assert.deepEqual(planSkipping('# S\n[SONG: G]\nMOTHER: ~ TWO\n[END SONG]\nTHE OLD MAN: Quiet!\n'),
+    ['speak:G', 'skip:TWO', 'show:songEnd', 'cue:TWO', 'listen:Quiet!']);
+});
