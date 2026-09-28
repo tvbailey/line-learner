@@ -1,24 +1,34 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
 import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections } from './core.js';
+import { parseScript } from './script.js';
+import { planScene } from './plan.js';
 
-// An original practice scene (not from any licensed script). You are the Old Man.
-const SCENE = [
-  { who: 'MOTHER', text: 'Dinner is on the table, and it is getting cold.' },
-  { who: 'OLD MAN', text: 'Hold your horses. I am in the middle of a very delicate operation.' },
-  { who: 'MOTHER', text: 'You have been in the middle of it since Tuesday.' },
-  { who: 'OLD MAN', text: 'Great inventions take time. Edison did not rush the light bulb.' },
-  { who: 'MOTHER', text: 'Edison did not set the kitchen curtains on fire.' },
-  { who: 'OLD MAN', text: 'That was one small spark (pause) and a learning experience.' },
-  { who: 'MOTHER', text: 'Wash your hands. And do not stop at the door to admire your work.' },
-  { who: 'OLD MAN', text: 'I never pause. I am a man of action.' },
-  { song: 'A Man of Action' },
-  { who: 'OLD MAN', text: 'A man of action never waits around.' },
-  { skip: true },
-  { who: 'MOTHER', text: 'Very nice, dear. Now wash your hands.' },
-  { who: 'OLD MAN', text: 'Fine. But we will pause this conversation, not end it.' },
-];
-const ME = 'OLD MAN';
+// An original practice scene (not from any licensed script), used until a real script is loaded.
+const DEMO = `# Practice scene (made up)
+MOTHER: Dinner is on the table, and it is getting cold.
+OLD MAN: Hold your horses. I am in the middle of a very delicate operation.
+MOTHER: You have been in the middle of it since Tuesday.
+OLD MAN: Great inventions take time. Edison did not rush the light bulb.
+MOTHER: Edison did not set the kitchen curtains on fire.
+OLD MAN: That was one small spark (pause) and a learning experience.
+MOTHER: Wash your hands. And do not stop at the door to admire your work.
+OLD MAN: I never pause. I am a man of action.
+[SONG: A Man of Action]
+OLD MAN: ~ A MAN OF ACTION NEVER WAITS AROUND.
+OLD MAN: ~ HE ROLLS HIS SLEEVES UP AND HE STANDS HIS GROUND.
+OLD MAN: ~ HE NEVER STOPS TO ASK THE WAY.
+[END SONG]
+MOTHER: Very nice, dear. Now wash your hands.
+OLD MAN: Fine. But we will pause this conversation, not end it.
+`;
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* storage off */ } },
+};
+let script = null;   // parsed script
+let me = '';         // the actor's character name
+let steps = [];      // practice plan for the chosen scene
 
 const params = new URLSearchParams(location.search);
 const SIM = params.has('sim');
@@ -40,18 +50,42 @@ function setStatus(text, cls = '') {
 }
 
 // ---------- script display ----------
+function loadScriptText(text, source) {
+  let parsed;
+  try { parsed = parseScript(text); }
+  catch (err) { setStatus(`Script problem: ${err.message}`, 'paused'); log(`script problem: ${err.message}`); return false; }
+  script = parsed;
+  const names = new Set();
+  script.scenes.forEach((sc) => sc.items.forEach((it) => { if (it.kind === 'line') names.add(it.who); }));
+  me = names.has('THE OLD MAN') ? 'THE OLD MAN' : (names.has('OLD MAN') ? 'OLD MAN' : [...names][0]);
+  const sel = $('scene');
+  sel.innerHTML = '';
+  script.scenes.forEach((sc, n) => { const o = document.createElement('option'); o.value = n; o.textContent = sc.title; sel.append(o); });
+  const saved = store.get('ll-scene');
+  if (saved && script.scenes[Number(saved)]) sel.value = saved;
+  log(`script loaded (${source}): ${script.scenes.length} scene(s), version ${script.version || 'none'}, you are ${me}`);
+  renderScript();
+  return true;
+}
+
 function renderScript() {
+  const scene = script.scenes[Number($('scene').value) || 0];
+  steps = planScene(scene.items, me);
   $('script').innerHTML = '';
-  SCENE.forEach((ln, i) => {
+  steps.forEach((st, i) => {
+    if (st.action === 'cue') return;
+    const it = st.item;
     const div = document.createElement('div');
     div.id = 'ln' + i;
-    if (ln.song) { div.className = 'ln song'; div.textContent = `Song: ${ln.song}`; }
-    else if (ln.skip) { div.className = 'ln song'; div.textContent = '(skip to the end of the song)'; }
+    if (it.kind === 'song') { div.className = 'ln song'; div.textContent = `Song: ${it.title}`; }
+    else if (it.kind === 'direction') { div.className = 'ln song'; div.textContent = `(${it.text})`; }
+    else if (it.kind !== 'line') { div.className = 'ln song'; div.textContent = it.kind === 'songEnd' ? '(end of song)' : '(skip)'; }
     else {
-      div.className = 'ln' + (ln.who === ME ? ' mine' : '');
+      div.className = 'ln' + (it.who === me ? ' mine' : '') + (st.action === 'skip' ? ' skipped' : '');
       const who = document.createElement('span');
-      who.className = 'who'; who.textContent = ln.who;
-      div.append(who, document.createTextNode(ln.text));
+      who.className = 'who';
+      who.textContent = it.who + (it.sung ? ' (sung)' : '') + (st.action === 'skip' ? ' - skipped' : '');
+      div.append(who, document.createTextNode(it.text));
     }
     $('script').append(div);
   });
@@ -71,6 +105,7 @@ function showHeard(i, heard, result, prompted) {
   let note = `Heard: "${heard}"`;
   if (prompted) note += ' (you asked for "line")';
   if (!result.match) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
+  if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; span.className = 'heard maybe'; }
   span.textContent = note;
   el.append(span);
 }
@@ -149,6 +184,7 @@ function startListening() {
     lastSpeechAt = Date.now();
   };
   rec.onerror = (e) => {
+    if (e.error === 'aborted') return; // our own stop between lines
     log(`listening error: ${e.error}`);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       micBlocked = true; wantListening = false;
@@ -229,25 +265,31 @@ function awaitMyLine(expected) {
 async function runScene() {
   if (running) return;
   running = true; paused = false; restarts = 0;
+  store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
-  log(`scene start; wait setting ${$('gap').value}s; continuous ${$('continuous').checked}; on-phone ${$('local').checked}`);
-  for (let i = 0; i < SCENE.length && running; i++) {
-    const ln = SCENE[i];
+  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; continuous ${$('continuous').checked}`);
+  for (let i = 0; i < steps.length && running; i++) {
+    const { action, item } = steps[i];
+    if (action === 'show' || action === 'skip') continue;
+    if (action === 'cue') { lastCue = stripDirections(item.text); await sayOther(item.text); continue; }
     highlight(i);
-    if (ln.song) { await sayOther(`Song. ${ln.song}.`); continue; }
-    if (ln.skip) { await sayOther('Skipping to the end of the song.'); continue; }
-    if (ln.who !== ME) { lastCue = stripDirections(ln.text); await sayOther(ln.text); continue; }
-    const expected = stripDirections(ln.text);
+    if (action === 'speak') {
+      if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
+      lastCue = stripDirections(item.text);
+      await sayOther(item.text);
+      continue;
+    }
+    const expected = stripDirections(item.text);
     const { heard, prompted } = await awaitMyLine(expected);
     const result = compareLine(expected, heard);
-    log(`line ${i}: ${result.match ? 'matched' : 'differs'}${prompted ? ', prompted' : ''}`);
+    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${prompted ? ', prompted' : ''}`);
     showHeard(i, heard, result, prompted);
   }
   stopListening();
   running = false;
   log(`scene end; listening restarts: ${restarts}`);
-  setStatus('Scene done. Tap Copy report.');
+  setStatus('Scene done. Red lines need work; orange ones were probably the phone mishearing you.');
 }
 
 // ---------- screen awake, network ----------
@@ -255,9 +297,10 @@ let wakeLock = null;
 async function keepAwake() {
   if (!('wakeLock' in navigator)) { log('screen wake lock: not supported'); return; }
   try {
+    if (wakeLock && !wakeLock.released) return;
     wakeLock = await navigator.wakeLock.request('screen');
     log('screen wake lock: on');
-    wakeLock.addEventListener('release', () => log('screen wake lock: released'));
+    wakeLock.addEventListener('release', () => log('screen wake lock: released'), { once: true });
   } catch (err) { log(`screen wake lock failed: ${err.message}`); }
 }
 document.addEventListener('visibilitychange', () => {
@@ -284,7 +327,17 @@ async function copyReport() {
 
 // ---------- setup ----------
 async function setup() {
-  renderScript();
+  const savedGap = store.get('ll-gap');
+  if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
+  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };
+  $('file').onchange = async () => {
+    const f = $('file').files[0];
+    if (!f) return;
+    const text = await f.text();
+    if (loadScriptText(text, f.name)) { store.set('ll-script', text); setStatus('Script loaded. Pick a scene and tap Start.'); }
+  };
+  const savedScript = store.get('ll-script');
+  if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
   $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; };
   $('start').onclick = runScene;
   $('pause').onclick = () => { tapCommand = paused ? 'resume' : 'pause'; };

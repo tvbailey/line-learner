@@ -52,3 +52,16 @@ test('each spoken line gets a stable id from its scene and its words', () => {
 test('parseScript reports a line it cannot read, with its line number', () => {
   assert.throws(() => parseScript('# Scene\nthis has no speaker\n'), /line 2/);
 });
+
+test('a line whose text starts with "~" is sung', () => {
+  const s = parseScript('# S\nTHE OLD MAN: ~ THE WHEELS IN MY MIND\nTHE OLD MAN: Oh, Peter Pan.\n');
+  const [a, b] = s.scenes[0].items;
+  assert.equal(a.sung, true);
+  assert.equal(a.text, 'THE WHEELS IN MY MIND');
+  assert.equal(b.sung, false);
+});
+
+test('speaker names may hold "&" and digits', () => {
+  const s = parseScript('# S\nRALPHIE & RANDY: What?\n2 MEN: ~ OUR DRINKS\n');
+  assert.deepEqual(s.scenes[0].items.map((i) => i.who), ['RALPHIE & RANDY', '2 MEN']);
+});

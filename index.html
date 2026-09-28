@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1d2433">
-<title>Line Learner voice test</title>
+<title>Line Learner</title>
 <link rel="manifest" href="manifest.webmanifest">
 <style>
   :root { --bg: #f6f4ef; --fg: #1d2433; --muted: #5d6475; --card: #ffffff; --line: #d9d5cb;
-          --mine: #fff3c4; --now: #2f6fde; --ok: #1f7a3d; --bad: #b3261e; }
+          --mine: #fff3c4; --now: #2f6fde; --ok: #1f7a3d; --bad: #b3261e; --maybe: #b45f06; }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #14171f; --fg: #eceff5; --muted: #9aa3b5; --card: #1d2230; --line: #333a4b;
-            --mine: #3a3418; --now: #6b9cff; --ok: #5cc27f; --bad: #ff8a80; }
+            --mine: #3a3418; --now: #6b9cff; --ok: #5cc27f; --bad: #ff8a80; --maybe: #ffb74d; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
@@ -34,7 +34,10 @@
   .ln.song { font-style: italic; color: var(--muted); }
   .ln.now { outline: 3px solid var(--now); }
   .ln .heard { display: block; font-size: 0.9rem; margin-top: 4px; }
-  .ln .heard.ok { color: var(--ok); } .ln .heard.bad { color: var(--bad); }
+  .ln .heard.ok { color: var(--ok); } .ln .heard.bad { color: var(--bad); } .ln .heard.maybe { color: var(--maybe); }
+  .ln.skipped { opacity: 0.55; }
+  .pick { display: flex; gap: 8px; margin-bottom: 12px; } .pick select { flex: 1; min-height: 48px; }
+  .file { display: inline-block; }
   details { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   summary { font-weight: 700; cursor: pointer; }
   label { display: block; margin: 10px 0 4px; }
@@ -48,8 +51,9 @@
 </head>
 <body>
 <main>
-  <h1>Line Learner: voice test</h1>
-  <p class="sub">A short made-up scene to check that the phone can be your scene partner. You are the Old Man.</p>
+  <h1>Line Learner</h1>
+  <p class="sub">Your phone reads the other parts; you say yours. Say "line" if you're stuck.</p>
+  <div class="pick"><select id="scene" aria-label="Scene"></select></div>
 
   <div id="status" class="status">Tap Start</div>
   <div class="controls">
@@ -63,8 +67,19 @@
 
   <div id="script" class="script"></div>
 
-  <details open>
-    <summary>What to try (about five minutes)</summary>
+  <details>
+    <summary>Load a script</summary>
+    <p>Open the script file Reginald sent you (it ends in <b>.txt</b>). It stays on this phone.</p>
+    <input id="file" type="file" accept=".txt,text/plain">
+  </details>
+
+  <details>
+    <summary>How it works</summary>
+    <p>Songs: you practice the first two sung lines after each lead-in; the rest of the song is skipped, and the last sung line before your next spoken line is read as your cue. After a scene, green lines matched, orange lines were probably the phone mishearing you, red lines need work.</p>
+  </details>
+
+  <details>
+    <summary>Voice test checklist</summary>
     <ol>
       <li>Tap <b>Start</b> and allow the microphone. The phone reads Mother's line; say yours when it goes quiet.</li>
       <li>On one of your lines, say <b>"line"</b> instead. It gives the first few words. Say "line" again for the whole line.</li>

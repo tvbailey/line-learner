@@ -6,8 +6,8 @@ test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
 });
 
-test('normalize folds apostrophes so "don\'t" and "dont" match', () => {
-  assert.deepEqual(normalize("Don't touch it"), ['dont', 'touch', 'it']);
+test('normalize expands a contraction to its long form', () => {
+  assert.deepEqual(normalize("Don't touch it"), ['do', 'not', 'touch', 'it']);
 });
 
 test('compareLine: exact words match even with different punctuation', () => {
@@ -67,4 +67,19 @@ test('detectCommand recognizes "resume" on its own', () => {
 
 test('stripDirections removes stage directions in parentheses', () => {
   assert.equal(stripDirections('That was one small spark... (pause) ...and a lesson.'), 'That was one small spark... ...and a lesson.');
+});
+
+test('compareLine treats a contraction and its long form as the same words', () => {
+  assert.equal(compareLine('I am a man of action. Do not touch it.', "I'm a man of action. Don't touch it.").match, true);
+  assert.equal(compareLine("It's here! You'll see.", 'it is here you will see').match, true);
+});
+
+test('compareLine marks a one-word difference that sounds alike as a likely mishearing', () => {
+  const r = compareLine('Edison did not rush the light bulb', 'medicine did not rush the light bulb');
+  assert.equal(r.match, false);
+  assert.equal(r.likelyMishearing, true);
+});
+
+test('compareLine does not call a real word swap a mishearing', () => {
+  assert.equal(compareLine('It is a major award', 'it is a big award').likelyMishearing, false);
 });

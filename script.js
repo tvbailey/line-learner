@@ -25,12 +25,14 @@ export function parseScript(text) {
     if (/^\[SKIP TO END OF SONG\]$/i.test(line)) { scene.items.push({ kind: 'skip' }); return; }
     if (/^\[END SONG\]$/i.test(line)) { scene.items.push({ kind: 'songEnd' }); return; }
     if ((m = line.match(/^\((.*)\)$/))) { scene.items.push({ kind: 'direction', text: m[1].trim() }); return; }
-    if ((m = line.match(/^([A-Z][A-Z .'-]*?):\s*(.+)$/))) {
+    if ((m = line.match(/^([A-Z0-9][A-Z0-9 .&'-]*?):\s*(.+)$/))) {
       const who = m[1].trim();
-      const key = `${scene.title}|${who}|${normalize(m[2]).join(' ')}`;
+      const sung = m[2].startsWith('~');
+      const body = sung ? m[2].slice(1).trim() : m[2].trim();
+      const key = `${scene.title}|${who}|${normalize(body).join(' ')}`;
       const count = (seen.get(key) || 0) + 1;
       seen.set(key, count);
-      scene.items.push({ kind: 'line', id: hash(`${key}|${count}`), who, text: m[2].trim() });
+      scene.items.push({ kind: 'line', id: hash(`${key}|${count}`), who, text: body, sung });
       return;
     }
     throw new Error(`line ${n}: cannot read "${line}"`);
