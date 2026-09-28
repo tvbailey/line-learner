@@ -65,3 +65,7 @@ test('speaker names may hold "&" and digits', () => {
   const s = parseScript('# S\nRALPHIE & RANDY: What?\n2 MEN: ~ OUR DRINKS\n');
   assert.deepEqual(s.scenes[0].items.map((i) => i.who), ['RALPHIE & RANDY', '2 MEN']);
 });
+
+test('speaker names may hold commas ("MEN, WOMEN, & KIDS")', () => {
+  assert.equal(parseScript('# S\nMEN, WOMEN, & KIDS: ~ A MAJOR AWARD!\n').scenes[0].items[0].who, 'MEN, WOMEN, & KIDS');
+});

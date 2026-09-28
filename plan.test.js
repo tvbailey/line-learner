@@ -30,3 +30,12 @@ test("other people's sung lines are skipped, not read", () => {
   assert.deepEqual(plan('# S\n[SONG: M]\nMOTHER: ~ STAINS ON THE RUG\nTHE OLD MAN: More potatoes, dear.\n'),
     ['speak:M', 'skip:STAINS ON THE RUG', 'cue:STAINS ON THE RUG', 'listen:More potatoes, dear.']);
 });
+
+test('a line shared with others ("THE OLD MAN & MOTHER") is mine to say', () => {
+  assert.deepEqual(plan('# S\nRANDY: Wow!\nTHE OLD MAN & MOTHER: Merry Christmas!\nMEN, WOMEN, THE OLD MAN & MOTHER: ~ RALPHIE TO THE RESCUE.\n'),
+    ['speak:Wow!', 'listen:Merry Christmas!', 'listen:RALPHIE TO THE RESCUE.']);
+});
+
+test('a name that only contains mine is not mine ("THE OLD MANAGER")', () => {
+  assert.deepEqual(plan('# S\nTHE OLD MANAGER: Hi.\n'), ['speak:Hi.']);
+});

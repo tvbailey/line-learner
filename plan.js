@@ -19,7 +19,7 @@ export function planScene(items, me) {
   for (const item of items) {
     if (item.kind === 'song') { steps.push({ action: 'speak', item }); sungLeft = SUNG_TO_PRACTICE; lastSkipped = null; continue; }
     if (item.kind !== 'line') { steps.push({ action: 'show', item }); continue; }
-    const mine = item.who === me;
+    const mine = item.who.split(/\s*(?:&|,)\s*/).includes(me); // "THE OLD MAN & MOTHER" counts as mine
     if (mine && !item.sung) { listen(item); sungLeft = SUNG_TO_PRACTICE; continue; }
     if (mine && item.sung && sungLeft > 0) { listen(item); sungLeft--; continue; }
     if (item.sung) { steps.push({ action: 'skip', item }); lastSkipped = item; continue; }
