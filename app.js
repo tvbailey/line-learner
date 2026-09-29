@@ -1,6 +1,6 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections } from './core.js';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly } from './core.js';
 import { parseScript } from './script.js';
 import { planScene } from './plan.js';
 
@@ -102,7 +102,7 @@ function showHeard(i, heard, result, prompted) {
   const span = document.createElement('span');
   const ok = result.match && !prompted;
   span.className = 'heard ' + (ok ? 'ok' : 'bad');
-  let note = `Heard: "${heard}"`;
+  let note = heard ? `Heard: "${heard}"` : 'Heard: a sound (no words needed for this line)';
   if (prompted) note += ' (you asked for "line")';
   if (!result.match) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
   if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; span.className = 'heard maybe'; }
@@ -168,7 +168,9 @@ function dedupe(results) {
 }
 
 function heardText() { return assembleTranscript(earlierSessions, currentResults); }
-function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; }
+// Last time the microphone picked up any sound at all, words or not (for lines like "Argh!").
+let lastSoundAt = 0;
+function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; }
 
 function startListening() {
   wantListening = true;
@@ -183,6 +185,8 @@ function startListening() {
     currentResults = dedupe(Array.from(e.results).map((r) => ({ final: r.isFinal, text: r[0].transcript })));
     lastSpeechAt = Date.now();
   };
+  rec.onsoundstart = () => { lastSoundAt = Date.now(); };
+  rec.onsoundend = () => { lastSoundAt = Date.now(); };
   rec.onerror = (e) => {
     if (e.error === 'aborted') return; // our own stop between lines
     log(`listening error: ${e.error}`);
@@ -223,7 +227,7 @@ async function sayOther(text) {
 }
 
 // Wait for one of his lines, handling commands, until he says a real line.
-function awaitMyLine(expected) {
+function awaitMyLine(expected, soundOnly = false) {
   return new Promise((resolve) => {
     let promptLevel = 0;
     let busy = false;
@@ -236,7 +240,10 @@ function awaitMyLine(expected) {
       let utterance = '';
       if (!cmd) {
         utterance = heardText();
-        if (!isLineFinished({ heardSomething: utterance.length > 0, lastSpeechAt, now: Date.now(), gapMs: gapMs() })) return;
+        // A sound-only line ("Argh!") may produce no words at all; any sound counts.
+        const heardSomething = utterance.length > 0 || (soundOnly && lastSoundAt > 0);
+        const lastHeard = soundOnly ? Math.max(lastSpeechAt, lastSoundAt) : lastSpeechAt;
+        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs() })) return;
         cmd = detectCommand(utterance);
         resetHeard();
       }
@@ -281,8 +288,9 @@ async function runScene() {
       continue;
     }
     const expected = stripDirections(item.text);
-    const { heard, prompted } = await awaitMyLine(expected);
-    const result = compareLine(expected, heard);
+    const soundOnly = isSoundOnly(expected);
+    const { heard, prompted } = await awaitMyLine(expected, soundOnly);
+    const result = soundOnly ? { match: true, missing: [], extra: [], likelyMishearing: false } : compareLine(expected, heard);
     log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${prompted ? ', prompted' : ''}`);
     showHeard(i, heard, result, prompted);
   }
@@ -365,6 +373,8 @@ async function setup() {
   if (SIM) {
     $('sim').style.display = 'flex';
     $('simSay').onclick = () => {
+      // "*" stands for a sound the recognizer turns into no words (like "Argh!").
+      if ($('simText').value === '*') { lastSoundAt = Date.now(); $('simText').value = ''; return; }
       currentResults = [...currentResults, { final: true, text: $('simText').value }];
       lastSpeechAt = Date.now();
       $('simText').value = '';

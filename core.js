@@ -89,3 +89,11 @@ export function isLineFinished({ heardSomething, lastSpeechAt, now, gapMs }) {
 export function stripDirections(text) {
   return text.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
 }
+
+// A line that is only a sound ("Argh!", "Ha!", "Hmm.") has no words for speech recognition
+// to catch, so the app accepts any sound for it instead of comparing words.
+const SOUND = /^(a+r+g+h*|a+r+r+|u+g+h+|h+a+|h+m+|a+h+|o+h+h+|e+r+g+h*|g+r+r+)$/;
+export function isSoundOnly(text) {
+  const words = normalize(stripDirections(text));
+  return words.length > 0 && words.every((w) => SOUND.test(w));
+}

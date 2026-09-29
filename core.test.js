@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections } from './core.js';
+import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly } from './core.js';
 
 test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
@@ -82,4 +82,12 @@ test('compareLine marks a one-word difference that sounds alike as a likely mish
 
 test('compareLine does not call a real word swap a mishearing', () => {
   assert.equal(compareLine('It is a major award', 'it is a big award').likelyMishearing, false);
+});
+
+test('isSoundOnly: an exclamation that is just a sound', () => {
+  for (const t of ['Argh!', '(struggling, in frustration) Argh!', 'Ha!', 'Hmm.', 'Aaarrgghh!', 'Ugh.']) assert.equal(isSoundOnly(t), true, t);
+});
+
+test('isSoundOnly: real words are not sounds', () => {
+  for (const t of ['Quiet!', 'Oh, sure.', 'Jeez.', 'Yeah?', 'What is it?']) assert.equal(isSoundOnly(t), false, t);
 });
