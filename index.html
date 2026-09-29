@@ -36,6 +36,12 @@
   .ln .heard { display: block; font-size: 0.9rem; margin-top: 4px; }
   .ln .heard.ok { color: var(--ok); } .ln .heard.bad { color: var(--bad); } .ln .heard.maybe { color: var(--maybe); }
   .ln.skipped { opacity: 0.55; }
+  .ln .heard, .summary .heard { display: block; }
+  .summary { margin-top: 12px; padding: 12px; }
+  .big { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+         padding: 24px; background: var(--bg); color: var(--fg); font-size: 2.6rem; font-weight: 800; line-height: 1.25; z-index: 10; }
+  .big[hidden] { display: none; }
+  .summary[hidden] { display: none; }
   .pick { display: flex; gap: 8px; margin-bottom: 12px; } .pick select { flex: 1; min-height: 48px; }
   .file { display: inline-block; }
   .toggle { display: flex; gap: 10px; align-items: center; margin: -4px 0 12px; font-size: 0.95rem; }
@@ -56,6 +62,7 @@
   <h1>Line Learner</h1>
   <p class="sub">Your phone reads the other parts; you say yours. Say "line" if you're stuck.</p>
   <div class="pick"><select id="scene" aria-label="Scene"></select></div>
+  <div class="pick"><select id="mode" aria-label="Practice mode"><option value="run">Run the scene</option><option value="drill">Made-up words drill</option></select></div>
   <label class="toggle"><input id="skipSongs" type="checkbox" checked> Dialogue only (skip everything inside songs)</label>
 
   <div id="status" class="status">Tap Start</div>
@@ -69,6 +76,8 @@
   <div id="sim"><input id="simText" placeholder="Type what you would say"><button id="simSay">Say</button></div>
 
   <div id="script" class="script"></div>
+  <div id="summary" class="script summary" hidden></div>
+  <div id="big" class="big" hidden></div>
 
   <details>
     <summary>Load a script</summary>
@@ -78,6 +87,7 @@
 
   <details>
     <summary>How it works</summary>
+    <p><b>Made-up words drill</b> runs only your lines with the film's made-up curse words: the cue, then you, then the words flash big so you can check yourself. In a regular run, each of those lines shows the script's spelling beside what the phone heard, and the end of the scene lists them all. The phone can only tell whether they sound close; you're the judge of exact.</p>
     <p>With <b>Dialogue only</b> on, the phone skips everything between a song's start and end, spoken lines inside the song included, and picks up at the next dialogue. With it off: you practice the first two sung lines after each lead-in; the rest of the song is skipped, and the last sung line before your next spoken line is read as your cue. After a scene, green lines matched, orange lines were probably the phone mishearing you, red lines need work.</p>
   </details>
 
@@ -108,6 +118,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=20260929a"></script>
 </body>
 </html>

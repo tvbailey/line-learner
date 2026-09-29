@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly } from './core.js';
+import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText } from './core.js';
 
 test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
@@ -90,4 +90,47 @@ test('isSoundOnly: an exclamation that is just a sound', () => {
 
 test('isSoundOnly: real words are not sounds', () => {
   for (const t of ['Quiet!', 'Oh, sure.', 'Jeez.', 'Yeah?', 'What is it?']) assert.equal(isSoundOnly(t), false, t);
+});
+
+test('compareLine: a made-up word heard as sound-alike real words passes, with the comparison kept', () => {
+  const r = compareLine('{Consarned}, {goobly-degooking}, {racklin} ash!', 'consarned goo glee the gooking racking ash');
+  assert.equal(r.match, true);
+  assert.equal(r.madeUp.length, 1);
+  assert.equal(r.madeUp[0].written, 'Consarned goobly-degooking racklin');
+  assert.equal(r.madeUp[0].heard, 'consarned goo glee the gooking racking');
+  assert.equal(r.madeUp[0].close, true);
+});
+
+test('compareLine: a made-up word replaced by something that sounds different is flagged to check', () => {
+  const r = compareLine('The {fumulgatin} furnace has gone out.', 'the stupid furnace has gone out');
+  assert.equal(r.match, false);
+  assert.equal(r.checkMadeUp, true);
+  assert.deepEqual(r.missing, []);
+});
+
+test('compareLine: a skipped made-up word is flagged to check', () => {
+  const r = compareLine('Oh, {flibberdygibbit}! Corn doodle do.', 'oh corn doodle do');
+  assert.equal(r.match, false);
+  assert.equal(r.madeUp[0].heard, '');
+});
+
+test('compareLine: real words around made-up words are still checked', () => {
+  const r = compareLine('The {fumulgatin} furnace has gone out.', 'the fumigating furnace has out');
+  assert.equal(r.match, false);
+  assert.deepEqual(r.missing, ['gone']);
+});
+
+test('compareLine: a false start followed by the right line counts, marked as a restart', () => {
+  const r = compareLine('How did you know that?', 'how did you how did you know that');
+  assert.equal(r.match, true);
+  assert.equal(r.restarted, true);
+});
+
+test('compareLine: a clean line is not marked as a restart', () => {
+  assert.equal(compareLine('How did you know that?', 'how did you know that').restarted, false);
+});
+
+test('promptText and cleanText drop the braces', () => {
+  assert.equal(cleanText('The {fumulgatin} furnace'), 'The fumulgatin furnace');
+  assert.equal(promptText('{Consarned}, goobly ash!', 2), 'Consarned, goobly ash!');
 });

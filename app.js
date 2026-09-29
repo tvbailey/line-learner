@@ -1,8 +1,8 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly } from './core.js';
-import { parseScript } from './script.js';
-import { planScene } from './plan.js';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords } from './core.js?v=20260929a';
+import { parseScript } from './script.js?v=20260929a';
+import { planScene, drillSteps } from './plan.js?v=20260929a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -70,10 +70,14 @@ function loadScriptText(text, source) {
 
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
-  steps = planScene(scene.items, me, { skipSongs: $('skipSongs').checked });
+  const drill = $('mode').value === 'drill';
+  // The drill takes every line with made-up words, songs included.
+  steps = drill ? drillSteps(planScene(scene.items, me)) : planScene(scene.items, me, { skipSongs: $('skipSongs').checked });
   $('script').innerHTML = '';
+  $('summary').hidden = true;
+  if (drill && !steps.length) $('script').textContent = 'No made-up words in this scene.';
   steps.forEach((st, i) => {
-    if (st.action === 'cue') return;
+    if (st.action === 'cue' && !drill) return;
     const it = st.item;
     const div = document.createElement('div');
     div.id = 'ln' + i;
@@ -85,7 +89,7 @@ function renderScript() {
       const who = document.createElement('span');
       who.className = 'who';
       who.textContent = it.who + (it.sung ? ' (sung)' : '') + (st.action === 'skip' ? ' - skipped' : '');
-      div.append(who, document.createTextNode(it.text));
+      div.append(who, document.createTextNode(cleanText(it.text)));
     }
     $('script').append(div);
   });
@@ -104,10 +108,18 @@ function showHeard(i, heard, result, prompted) {
   span.className = 'heard ' + (ok ? 'ok' : 'bad');
   let note = heard ? `Heard: "${heard}"` : 'Heard: a sound (no words needed for this line)';
   if (prompted) note += ' (you asked for "line")';
-  if (!result.match) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
+  if (result.restarted) note += ' (you restarted, then got it)';
+  if (result.missing.length || result.extra.length) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
   if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; span.className = 'heard maybe'; }
+  if (result.checkMadeUp && !prompted && !result.missing.length && !result.extra.length) span.className = 'heard maybe';
   span.textContent = note;
   el.append(span);
+  for (const m of result.madeUp || []) {
+    const row = document.createElement('span');
+    row.className = 'heard ' + (m.close ? 'ok' : 'maybe');
+    row.textContent = `Script: ${m.written}  |  Phone heard: ${m.heard || '(nothing)'}  |  ${m.close ? 'sounds close' : 'check this one'}`;
+    el.append(row);
+  }
 }
 
 // ---------- speaking ----------
@@ -223,7 +235,7 @@ function gapMs() { return Number($('gap').value) * 1000; }
 async function sayOther(text) {
   stopListening();
   setStatus('Reading the cue...');
-  await speak(stripDirections(text));
+  await speak(cleanText(stripDirections(text)));
 }
 
 // Wait for one of his lines, handling commands, until he says a real line.
@@ -269,9 +281,35 @@ function awaitMyLine(expected, soundOnly = false) {
   });
 }
 
+let madeUpSeen = [];
+
+// Shows text big across the screen for a few seconds.
+function flashBig(text) {
+  return new Promise((resolve) => {
+    $('big').textContent = text;
+    $('big').hidden = false;
+    setTimeout(() => { $('big').hidden = true; resolve(); }, 3500);
+  });
+}
+
+// End of scene: every made-up word, the script's spelling beside what the phone heard.
+function showSummary() {
+  if (!madeUpSeen.length) return;
+  const box = $('summary');
+  box.innerHTML = '<b>Made-up words: script vs. what the phone heard</b>';
+  for (const m of madeUpSeen) {
+    const row = document.createElement('div');
+    row.className = 'heard ' + (m.close ? 'ok' : 'maybe');
+    row.textContent = `${m.written}  |  ${m.heard || '(nothing)'}  |  ${m.close ? 'sounds close' : 'check this one'}`;
+    box.append(row);
+  }
+  box.hidden = false;
+  box.scrollIntoView({ behavior: 'smooth' });
+}
+
 async function runScene() {
   if (running) return;
-  running = true; paused = false; restarts = 0;
+  running = true; paused = false; restarts = 0; madeUpSeen = [];
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
@@ -279,7 +317,7 @@ async function runScene() {
   for (let i = 0; i < steps.length && running; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
-    if (action === 'cue') { lastCue = stripDirections(item.text); await sayOther(item.text); continue; }
+    if (action === 'cue') { if ($('mode').value === 'drill') highlight(i); lastCue = stripDirections(item.text); await sayOther(item.text); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
@@ -291,12 +329,19 @@ async function runScene() {
     const soundOnly = isSoundOnly(expected);
     const { heard, prompted } = await awaitMyLine(expected, soundOnly);
     const result = soundOnly ? { match: true, missing: [], extra: [], likelyMishearing: false } : compareLine(expected, heard);
-    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${prompted ? ', prompted' : ''}`);
+    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
+    if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
     showHeard(i, heard, result, prompted);
+    if (result.madeUp && result.madeUp.length) {
+      madeUpSeen.push(...result.madeUp);
+      // In the drill, flash the made-up words big right after he says them, to check himself.
+      if ($('mode').value === 'drill') await flashBig(madeUpWords(item.text).join('  ·  '));
+    }
   }
   stopListening();
   running = false;
   log(`scene end; listening restarts: ${restarts}`);
+  showSummary();
   setStatus('Scene done. Red lines need work; orange ones were probably the phone mishearing you.');
 }
 
@@ -335,6 +380,8 @@ async function copyReport() {
 
 // ---------- setup ----------
 async function setup() {
+  $('mode').value = store.get('ll-mode') === 'drill' ? 'drill' : 'run';
+  $('mode').onchange = () => { store.set('ll-mode', $('mode').value); if (!running) renderScript(); };
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');

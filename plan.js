@@ -32,3 +32,17 @@ export function planScene(items, me, { skipSongs = false } = {}) {
   }
   return steps;
 }
+
+// The made-up-words drill: only the actor's lines holding {made-up} words, each preceded by
+// the line just before it in the scene, read as the cue.
+export function drillSteps(steps) {
+  const out = [];
+  steps.forEach((st, i) => {
+    if (st.action !== 'listen' || !st.item.text.includes('{')) return;
+    for (let k = i - 1; k >= 0; k--) {
+      if (steps[k].item.kind === 'line') { out.push({ action: 'cue', item: steps[k].item }); break; }
+    }
+    out.push(st);
+  });
+  return out;
+}

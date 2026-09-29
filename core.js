@@ -23,30 +23,126 @@ export function normalize(text) {
 }
 
 // Word-by-word comparison of the script line with what was heard (longest common subsequence).
+// Made-up words in {braces} ("{goobly-degooking}") cannot be spelled by speech recognition, so
+// they are checked by sound instead: the heard words in their place must sound close. Each one
+// comes back in `madeUp` (written vs heard) so the actor can judge it himself; one that does not
+// sound close sets `checkMadeUp`. A false start ("how did you, how did you know that") counts as
+// right when the corrected attempt matches, and is marked restarted.
 export function compareLine(expected, heard) {
-  const a = normalize(expected);
+  const parts = splitMadeUp(expected);
   const b = normalize(heard).filter((w) => !FILLERS.has(w));
+  let result = { ...alignLine(parts, b), restarted: false };
+  if (!result.match) {
+    for (const candidate of restartCandidates(b)) {
+      const r = alignLine(parts, candidate);
+      if (r.match) { result = { ...r, restarted: true }; break; }
+    }
+  }
+  const { match, missing, extra } = result;
+  const likelyMishearing = !match && !result.checkMadeUp && missing.length === extra.length
+    && missing.every((w, k) => soundsAlike(w, extra[k]));
+  return { ...result, likelyMishearing };
+}
+
+// The line as a list of real words and made-up spans; neighboring made-up spans are merged.
+function splitMadeUp(text) {
+  const parts = [];
+  for (const piece of text.split(/(\{[^}]*\})/)) {
+    if (piece.startsWith('{')) {
+      const written = piece.slice(1, -1).trim();
+      const last = parts[parts.length - 1];
+      if (last && last.madeUp) last.written += ' ' + written;
+      else parts.push({ madeUp: true, written });
+    } else {
+      for (const w of normalize(piece)) parts.push({ word: w });
+    }
+  }
+  return parts;
+}
+
+function alignLine(parts, b) {
+  const a = parts.filter((p) => !p.madeUp).map((p) => p.word);
   const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) {
     for (let j = b.length - 1; j >= 0; j--) {
       dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
   }
-  const missing = [];
-  const extra = [];
-  let i = 0;
-  let j = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) { i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) missing.push(a[i++]);
-    else extra.push(b[j++]);
+  const matchedJ = new Array(a.length).fill(-1);
+  const usedJ = new Set();
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    if (a[i] === b[j]) { matchedJ[i] = j; usedJ.add(j); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
   }
-  while (i < a.length) missing.push(a[i++]);
-  while (j < b.length) extra.push(b[j++]);
-  const match = missing.length === 0 && extra.length === 0;
-  const likelyMishearing = !match && missing.length === extra.length
-    && missing.every((w, k) => soundsAlike(w, extra[k]));
-  return { match, missing, extra, likelyMishearing };
+  const missing = a.filter((_, i) => matchedJ[i] < 0);
+  const madeUp = [];
+  let realBefore = 0;
+  for (const p of parts) {
+    if (!p.madeUp) { realBefore++; continue; }
+    let left = -1;
+    for (let i = realBefore - 1; i >= 0; i--) if (matchedJ[i] >= 0) { left = matchedJ[i]; break; }
+    let right = b.length;
+    for (let i = realBefore; i < a.length; i++) if (matchedJ[i] >= 0) { right = matchedJ[i]; break; }
+    const words = [];
+    for (let j = left + 1; j < right; j++) if (!usedJ.has(j)) { words.push(b[j]); usedJ.add(j); }
+    const heardText = words.join(' ');
+    madeUp.push({ written: p.written, heard: heardText, close: heardText !== '' && soundKeysClose(p.written, heardText) });
+  }
+  const extra = b.filter((_, j) => !usedJ.has(j));
+  const checkMadeUp = madeUp.some((m) => !m.close);
+  return { match: missing.length === 0 && extra.length === 0 && !checkMadeUp, missing, extra, madeUp, checkMadeUp };
+}
+
+// A rough sound key: consonant skeleton with look-alike sounds folded together,
+// so "goobly-degooking" and "goo glee the gooking" come out close.
+function soundKey(text) {
+  let t = text.toLowerCase().replace(/[^a-z]/g, '');
+  t = t.replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/[cq]/g, 'k').replace(/x/g, 'ks')
+    .replace(/z/g, 's').replace(/v/g, 'f').replace(/d/g, 't').replace(/b/g, 'p').replace(/g/g, 'k').replace(/h/g, '');
+  const first = t[0] || '';
+  t = first + t.slice(1).replace(/[aeiouyw]/g, '');
+  return t.replace(/(.)\1+/g, '$1');
+}
+
+function soundKeysClose(a, b) {
+  return similarity(soundKey(a), soundKey(b)) >= 0.5;
+}
+
+function similarity(a, b) {
+  if (!a.length && !b.length) return 1;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return 1 - d[a.length][b.length] / Math.max(a.length, b.length);
+}
+
+// Ways the heard words could be read if he stopped and started again:
+// starting over from any later word, or dropping a fragment he then repeated.
+function restartCandidates(b) {
+  const out = [];
+  for (let k = 1; k < b.length; k++) out.push(b.slice(k));
+  for (let len = 1; len * 2 <= b.length; len++) {
+    for (let i = 0; i + len * 2 <= b.length; i++) {
+      const repeated = b.slice(i, i + len).every((w, n) => w === b[i + len + n]);
+      if (repeated) out.push([...b.slice(0, i), ...b.slice(i + len)]);
+    }
+  }
+  return out;
+}
+
+// The line as shown and spoken: braces that mark made-up words removed.
+export function cleanText(text) {
+  return text.replace(/[{}]/g, '');
+}
+
+// The made-up words of a line, for showing big on screen.
+export function madeUpWords(text) {
+  return (text.match(/\{[^}]*\}/g) || []).map((w) => w.slice(1, -1));
 }
 
 // Rough sound-alike test: small edit distance relative to word length ("edison" / "medicine").
@@ -69,7 +165,8 @@ export function detectCommand(utterance) {
 
 // First "line" gives the first four words; the second gives the whole line.
 export function promptText(line, level) {
-  return level >= 2 ? line : line.split(/\s+/).slice(0, 4).join(' ');
+  const text = cleanText(line);
+  return level >= 2 ? text : text.split(/\s+/).slice(0, 4).join(' ');
 }
 
 // Speech recognition restarts mid-line; join what earlier sessions heard with the current results.
