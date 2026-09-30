@@ -29,8 +29,9 @@ export function normalize(text) {
 // sound close sets `checkMadeUp`. A false start ("how did you, how did you know that") counts as
 // right when the corrected attempt matches, and is marked restarted.
 export function compareLine(expected, heard) {
-  const parts = splitMadeUp(expected);
-  const b = normalize(heard).filter((w) => !FILLERS.has(w));
+  const parts = splitMadeUp(expected).map((p) => (p.madeUp ? p : { word: canon(p.word) }));
+  const real = parts.filter((p) => !p.madeUp).map((p) => p.word);
+  const b = fixRunTogether(normalize(heard).filter((w) => !FILLERS.has(w)).map(canon), real);
   let result = { ...alignLine(parts, b), restarted: false };
   if (!result.match) {
     for (const candidate of restartCandidates(b)) {
@@ -42,6 +43,34 @@ export function compareLine(expected, heard) {
   const likelyMishearing = !match && !result.checkMadeUp && missing.length === extra.length
     && missing.every((w, k) => soundsAlike(w, extra[k]));
   return { ...result, likelyMishearing };
+}
+
+// Words that sound the same but are spelled differently: speech recognition picks one
+// spelling, the script may use another ("Shoo" heard as "shoe", "'em" heard as "him").
+const SAME_SOUND = [
+  ['shoo', 'shoe'], ['em', 'him', 'them'], ['to', 'too', 'two'], ['for', 'four', 'fore'],
+  ['their', 'there'], ['know', 'no'], ['one', 'won'], ['right', 'write'], ['hear', 'here'],
+  ['ate', 'eight'], ['by', 'buy', 'bye'], ['see', 'sea'], ['whole', 'hole'], ['wear', 'where'],
+  ['weather', 'whether'], ['ok', 'okay'], ['mr', 'mister'], ['yeah', 'yea'],
+];
+const CANON = new Map();
+for (const group of SAME_SOUND) for (const w of group) CANON.set(w, group[0]);
+function canon(w) { return CANON.get(w) || w; }
+
+// "getaway" for "get away", "cracker jack" for "crackerjack": split or join heard words so
+// they line up with the script's words.
+function fixRunTogether(b, real) {
+  const known = new Set(real);
+  const pairs = new Map();
+  for (let i = 0; i + 1 < real.length; i++) pairs.set(real[i] + real[i + 1], [real[i], real[i + 1]]);
+  const out = [];
+  for (let j = 0; j < b.length; j++) {
+    const w = b[j];
+    if (!known.has(w) && pairs.has(w)) out.push(...pairs.get(w));
+    else if (!known.has(w) && j + 1 < b.length && known.has(w + b[j + 1])) { out.push(w + b[j + 1]); j++; }
+    else out.push(w);
+  }
+  return out;
 }
 
 // The line as a list of real words and made-up spans; neighboring made-up spans are merged.

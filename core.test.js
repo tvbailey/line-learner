@@ -149,3 +149,19 @@ test('voiceFor: different characters spread across the available voices', () => 
   const picks = new Set(['MOTHER', 'RALPHIE', 'RANDY', 'JEAN', 'MISS SHIELDS'].map((n) => voiceFor(n, 5).voice));
   assert.ok(picks.size >= 3);
 });
+
+test('compareLine: sound-alike spellings count as the same word (shoo/shoe, em/him)', () => {
+  assert.equal(compareLine('Shoo! Shoo!', 'shoe shoe').match, true);
+  assert.equal(compareLine("Call 'em off!", 'call him off').match, true);
+  assert.equal(compareLine("Call 'em off!", 'call them off').match, true);
+  assert.equal(compareLine('I want to go too.', 'I want two go to').match, true);
+});
+
+test('compareLine: words run together or split apart still match (get away / getaway)', () => {
+  assert.equal(compareLine('Get away! Shoo!', 'getaway shoo').match, true);
+  assert.equal(compareLine('A crackerjack guy.', 'a cracker jack guy').match, true);
+});
+
+test('compareLine: a genuinely different word still fails', () => {
+  assert.equal(compareLine("Call 'em off!", 'call it off').match, false);
+});

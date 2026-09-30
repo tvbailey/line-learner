@@ -1,8 +1,8 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929b';
-import { parseScript } from './script.js?v=20260929b';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20260929b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929c';
+import { parseScript } from './script.js?v=20260929c';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20260929c';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -167,7 +167,10 @@ function speak(text, who = '') {
     if (who && $('perCharacter').checked && voiceList.length) {
       const v = voiceFor(who, voiceList.length);
       const pool = voicesFor(v.kind);
-      u.voice = pool.length ? pool[v.voice % pool.length] : voiceList[v.voice];
+      // No gender hints in the names (Android's voices are named by country): keep one American
+      // voice for everyone, told apart by pitch and speed, rather than a family with five accents.
+      const american = voiceList.find((x) => /United States|en[-_]US/i.test(`${x.name} ${x.lang}`));
+      u.voice = pool.length ? pool[v.voice % pool.length] : (american || voiceList[v.voice]);
       u.pitch = v.pitch; u.rate = v.rate;
     } else if (voice) u.voice = voice;
     u.onend = () => done();
@@ -231,7 +234,8 @@ function startListening() {
     if (wantListening && !micBlocked) {
       restarts++;
       log(`listening stopped by the phone; restarting (#${restarts})`);
-      setTimeout(() => { if (wantListening) startListening(); }, 100);
+      // Restart at once: words spoken while the phone isn't listening are lost.
+      if (wantListening) startListening();
     }
   };
   try { rec.start(); } catch (err) { log(`start failed: ${err.message}`); }
