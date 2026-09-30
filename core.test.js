@@ -165,3 +165,9 @@ test('compareLine: words run together or split apart still match (get away / get
 test('compareLine: a genuinely different word still fails', () => {
   assert.equal(compareLine("Call 'em off!", 'call it off').match, false);
 });
+
+test('compareLine: one word heard as two sound-alike words is a likely mishearing', () => {
+  const r = compareLine('A trophy for all to see.', 'a tro fee for all to see');
+  assert.equal(r.match, false);
+  assert.equal(r.likelyMishearing, true);
+});

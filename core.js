@@ -40,8 +40,11 @@ export function compareLine(expected, heard) {
     }
   }
   const { match, missing, extra } = result;
-  const likelyMishearing = !match && !result.checkMadeUp && missing.length === extra.length
-    && missing.every((w, k) => soundsAlike(w, extra[k]));
+  // Word for word ("medicine" for "Edison"), or a short run heard as a different number of
+  // words that sounds the same ("made you" for "mangy").
+  const likelyMishearing = !match && !result.checkMadeUp && missing.length > 0 && extra.length > 0
+    && ((missing.length === extra.length && missing.every((w, k) => soundsAlike(w, extra[k])))
+      || (missing.length <= 3 && extra.length <= 3 && soundKeysClose(missing.join(' '), extra.join(' '))));
   return { ...result, likelyMishearing };
 }
 

@@ -1,8 +1,8 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929c';
-import { parseScript } from './script.js?v=20260929c';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20260929c';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929d';
+import { parseScript } from './script.js?v=20260929d';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20260929d';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -435,10 +435,14 @@ async function setup() {
   if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
   const R = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (R && 'processLocally' in R.prototype) {
-    $('localWrap').hidden = false;
+    // Offer the option only when this phone can actually do it.
     if (typeof R.available === 'function') {
-      try { log(`on-phone listening: ${await R.available({ langs: ['en-US'], processLocally: true })}`); }
-      catch (err) { log(`on-phone check failed: ${err.message}`); }
+      try {
+        const status = await R.available({ langs: ['en-US'], processLocally: true });
+        log(`on-phone listening: ${status}`);
+        if (status !== 'unavailable') $('localWrap').hidden = false;
+        else $('local').checked = false;
+      } catch (err) { log(`on-phone check failed: ${err.message}`); }
     }
   } else log('on-phone listening: not offered by this browser');
   if (!R && !SIM) setStatus('This browser cannot listen. Open it in Chrome.', 'paused');
