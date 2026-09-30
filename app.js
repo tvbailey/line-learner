@@ -1,8 +1,8 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929d';
-import { parseScript } from './script.js?v=20260929d';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20260929d';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929e';
+import { parseScript } from './script.js?v=20260929e';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20260929e';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -138,9 +138,13 @@ function loadVoices() {
     o.value = n; o.textContent = `${v.name} (${v.lang})`;
     sel.append(o);
   });
-  if (current) sel.value = current;
+  // Remember the chosen voice by name, since the list can come back in a different order.
+  const savedName = store.get('ll-voice');
+  const savedIndex = voices.findIndex((v) => v.name === savedName);
+  if (savedIndex >= 0) sel.value = savedIndex;
+  else if (current) sel.value = current;
   voice = voices[Number(sel.value) || 0] || null;
-  sel.onchange = () => { voice = voices[Number(sel.value)] || null; };
+  sel.onchange = () => { voice = voices[Number(sel.value)] || null; if (voice) store.set('ll-voice', voice.name); };
   log(`voices available: ${voices.length}${voices.length ? ` (${voices.map((v) => v.name).join('; ')})` : ''}`);
 }
 
@@ -421,7 +425,7 @@ async function setup() {
   };
   const savedScript = store.get('ll-script');
   if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
-  $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; };
+  $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; store.set('ll-gap', $('gap').value); };
   $('start').onclick = runScene;
   $('pause').onclick = () => { tapCommand = paused ? 'resume' : 'pause'; };
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
@@ -429,8 +433,10 @@ async function setup() {
   $('copy').onclick = copyReport;
 
   const cont = document.createElement('label');
-  cont.innerHTML = '<input id="continuous" type="checkbox"> Continuous listening (compare on and off in the test)';
+  cont.innerHTML = '<input id="continuous" type="checkbox"> Continuous listening';
   $('localWrap').before(cont);
+  $('continuous').checked = store.get('ll-continuous') === 'on';
+  $('continuous').onchange = () => store.set('ll-continuous', $('continuous').checked ? 'on' : 'off');
 
   if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
   const R = window.SpeechRecognition || window.webkitSpeechRecognition;
