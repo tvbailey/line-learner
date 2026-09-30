@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929f';
-import { parseScript } from './script.js?v=20260929f';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20260929f';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260930a';
+import { parseScript } from './script.js?v=20260930a';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20260930a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -44,16 +44,66 @@ function log(msg) {
   el.scrollTop = el.scrollHeight;
 }
 
-function setStatus(text, cls = '') {
+// The turn band: a big heading that always sits in the same place, saying whose turn it is.
+const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM' };
+const TURN_ICON = {
+  idle: '<circle cx="12" cy="12" r="9"/>',
+  cue: '<path d="M3 9v6h4l5 4V5L7 9H3zM16 8q5 4 0 8"/>',
+  you: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+  paused: '<path d="M8 5v14M16 5v14"/>',
+  done: '<path d="M4 12l5 5L20 7"/>',
+  problem: '<path d="M12 8v5M12 16v1M4 20h16L12 4z"/>',
+};
+// `cls` is the older shape ('listening' / 'paused'); `turn` names the heading outright.
+function setStatus(text, cls = '', turn = '') {
+  const kind = turn || (cls === 'listening' ? 'you' : cls === 'paused' ? 'paused' : 'idle');
   $('status').textContent = text;
-  $('status').className = 'status ' + cls;
+  $('turnTitle').textContent = TURN_TITLE[kind];
+  $('turnIcon').innerHTML = TURN_ICON[kind];
+  $('turn').className = 'turn ' + kind;
+}
+
+// The current line, big, in the stage area under the turn band. Made-up words are underlined.
+function showOnStage(st, next) {
+  const it = st.item;
+  const line = $('currentLine');
+  line.textContent = '';
+  if (it.kind === 'song') { $('speaker').textContent = 'Song'; line.textContent = it.title; }
+  else if (it.kind !== 'line') { $('speaker').textContent = ' '; line.textContent = it.kind === 'direction' ? `(${it.text})` : ''; }
+  else {
+    const mine = st.action === 'listen';
+    $('speaker').textContent = it.who + (it.sung ? ' (sung)' : '') + (mine ? ' / you' : '');
+    for (const piece of it.text.split(/(\{[^}]*\})/)) {
+      if (!piece) continue;
+      if (piece.startsWith('{')) { const m = document.createElement('mark'); m.textContent = piece.slice(1, -1); line.append(m); }
+      else line.append(document.createTextNode(piece));
+    }
+  }
+  const madeUp = it.kind === 'line' && st.action === 'listen' && it.text.includes('{');
+  $('lineNote').textContent = madeUp ? 'Underlined words are the made-up ones.'
+    : (st.action !== 'listen' && next && next.action === 'listen' ? 'Your line is next.' : '');
+}
+
+// The last result, kept on the stage until the next one: symbol and word, never color alone.
+function showLastResult(kind, word) {
+  const el = $('lastResult');
+  el.className = 'badge ' + kind;
+  el.textContent = kind ? `Last line: ${RESULT_SYMBOL[kind]} ${word}` : '';
+}
+const RESULT_SYMBOL = { ok: '✓', check: '?', bad: '×' };
+const RESULT_WORD = { ok: 'Matched', check: 'Check', bad: 'Needs work' };
+function badge(kind, word = RESULT_WORD[kind]) {
+  const b = document.createElement('span');
+  b.className = 'badge ' + kind;
+  b.textContent = `${RESULT_SYMBOL[kind]} ${word}`;
+  return b;
 }
 
 // ---------- script display ----------
 function loadScriptText(text, source) {
   let parsed;
   try { parsed = parseScript(text); }
-  catch (err) { setStatus(`Script problem: ${err.message}`, 'paused'); log(`script problem: ${err.message}`); return false; }
+  catch (err) { setStatus(`Script problem: ${err.message}`, '', 'problem'); log(`script problem: ${err.message}`); return false; }
   script = parsed;
   const names = new Set();
   script.scenes.forEach((sc) => sc.items.forEach((it) => { if (it.kind === 'line') names.add(it.who); }));
@@ -63,6 +113,7 @@ function loadScriptText(text, source) {
   script.scenes.forEach((sc, n) => { const o = document.createElement('option'); o.value = n; o.textContent = sc.title; sel.append(o); });
   const saved = store.get('ll-scene');
   if (saved && script.scenes[Number(saved)]) sel.value = saved;
+  $('role').textContent = me;
   log(`script loaded (${source}): ${script.scenes.length} scene(s), version ${script.version || 'none'}, you are ${me}`);
   renderScript();
   return true;
@@ -74,8 +125,10 @@ function renderScript() {
   // The drill takes every line with made-up words, songs included.
   steps = drill ? drillSteps(planScene(scene.items, me))
     : trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value));
+  $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   $('summary').hidden = true;
+  showLastResult('', '');
   if (drill && !steps.length) $('script').textContent = 'No made-up words in this scene.';
   steps.forEach((st, i) => {
     if (st.action === 'cue' && !drill) return;
@@ -99,26 +152,36 @@ function renderScript() {
 function highlight(i) {
   document.querySelectorAll('.ln.now').forEach((el) => el.classList.remove('now'));
   const el = $('ln' + i);
-  if (el) { el.classList.add('now'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  if (el) {
+    el.classList.add('now');
+    // Scroll inside the folded script only, so the stage at the top stays where it is.
+    const box = $('script');
+    box.scrollTo({ top: el.offsetTop - box.offsetTop - box.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
+  }
+  if (steps[i]) showOnStage(steps[i], steps[i + 1]);
 }
 
 function showHeard(i, heard, result, prompted) {
   const el = $('ln' + i);
-  const span = document.createElement('span');
   const ok = result.match && !prompted;
-  span.className = 'heard ' + (ok ? 'ok' : 'bad');
+  let kind = ok ? 'ok' : 'bad';
   let note = heard ? `Heard: "${heard}"` : 'Heard: a sound (no words needed for this line)';
   if (prompted) note += ' (you asked for "line")';
   if (result.restarted) note += ' (you restarted, then got it)';
   if (result.missing.length || result.extra.length) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
-  if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; span.className = 'heard maybe'; }
-  if (result.checkMadeUp && !prompted && !result.missing.length && !result.extra.length) span.className = 'heard maybe';
+  if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; kind = 'check'; }
+  if (result.checkMadeUp && !prompted && !result.missing.length && !result.extra.length) kind = 'check';
+  const mark = badge(kind);
+  mark.classList.add('result');
+  const span = document.createElement('span');
+  span.className = 'heard ' + kind;
   span.textContent = note;
-  el.append(span);
+  el.append(mark, span);
+  showLastResult(kind, RESULT_WORD[kind]);
   for (const m of result.madeUp || []) {
     const row = document.createElement('span');
-    row.className = 'heard ' + (m.close ? 'ok' : 'maybe');
-    row.textContent = `Script: ${m.written}  |  Phone heard: ${m.heard || '(nothing)'}  |  ${m.close ? 'sounds close' : 'check this one'}`;
+    row.className = 'heard ' + (m.close ? 'ok' : 'check');
+    row.textContent = `Script: ${m.written}  |  Phone heard: ${m.heard || '(nothing)'}  |  ${m.close ? '✓ sounds close' : '? check this one'}`;
     el.append(row);
   }
 }
@@ -212,7 +275,7 @@ function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt 
 function startListening() {
   wantListening = true;
   if (SIM) return;
-  if (!Recognition) { setStatus('This browser cannot listen. Use Chrome.', 'paused'); return; }
+  if (!Recognition) { setStatus('This browser cannot listen. Use Chrome.', '', 'problem'); return; }
   rec = new Recognition();
   rec.lang = 'en-US';
   rec.interimResults = true;
@@ -229,7 +292,7 @@ function startListening() {
     log(`listening error: ${e.error}`);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       micBlocked = true; wantListening = false;
-      setStatus('Microphone blocked. Allow it in Chrome settings.', 'paused');
+      setStatus('Microphone blocked. Allow it in Chrome settings.', '', 'problem');
     }
   };
   rec.onend = () => {
@@ -260,7 +323,7 @@ function gapMs() { return Number($('gap').value) * 1000; }
 
 async function sayOther(text, who = '') {
   stopListening();
-  setStatus('Reading the cue...');
+  setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
   await speak(cleanText(stripDirections(text)), who);
 }
 
@@ -312,7 +375,9 @@ let madeUpSeen = [];
 // Shows text big across the screen for a few seconds.
 function flashBig(text) {
   return new Promise((resolve) => {
-    $('big').textContent = text;
+    const box = $('bigWords');
+    box.innerHTML = '';
+    for (const w of text.split('  ·  ')) { const p = document.createElement('p'); p.className = 'flash-word'; p.textContent = w; box.append(p); }
     $('big').hidden = false;
     setTimeout(() => { $('big').hidden = true; resolve(); }, 3500);
   });
@@ -322,13 +387,23 @@ function flashBig(text) {
 function showSummary() {
   if (!madeUpSeen.length) return;
   const box = $('summary');
-  box.innerHTML = '<b>Made-up words: script vs. what the phone heard</b>';
+  box.innerHTML = '<h2>Made-up words</h2><p>Script vs. what the phone heard</p>';
   for (const m of madeUpSeen) {
     const row = document.createElement('div');
-    row.className = 'heard ' + (m.close ? 'ok' : 'maybe');
-    row.textContent = `${m.written}  |  ${m.heard || '(nothing)'}  |  ${m.close ? 'sounds close' : 'check this one'}`;
+    row.className = 'word-pair';
+    const dl = document.createElement('dl');
+    for (const [dt, dd] of [['Script', m.written], ['Phone heard', m.heard || '(nothing)']]) {
+      const t = document.createElement('dt'); t.textContent = dt;
+      const d = document.createElement('dd'); d.textContent = dd;
+      dl.append(t, d);
+    }
+    row.append(dl, badge(m.close ? 'ok' : 'check', m.close ? 'Sounds close' : 'Check this one'));
     box.append(row);
   }
+  const note = document.createElement('p');
+  note.className = 'note';
+  note.textContent = 'The phone only knows if they sound close. You are the judge of exact.';
+  box.append(note);
   box.hidden = false;
   box.scrollIntoView({ behavior: 'smooth' });
 }
@@ -367,8 +442,9 @@ async function runScene() {
   stopListening();
   running = false;
   log(`scene end; listening restarts: ${restarts}`);
+  $('context').open = true;
   showSummary();
-  setStatus('Scene done. Red lines need work; orange ones were probably the phone mishearing you.');
+  setStatus('Scene done. Open "Scene around this line" for every line: ✓ Matched, ? Check, × Needs work.', '', 'done');
 }
 
 // ---------- screen awake, network ----------
@@ -400,18 +476,39 @@ async function copyReport() {
     `listening restarts: ${restarts}`,
     '', ...logLines,
   ].join('\n');
-  try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.'); }
-  catch (_) { setStatus('Copy failed; open the Event log and copy it by hand.', 'paused'); }
+  try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.', '', 'done'); }
+  catch (_) { setStatus('Copy failed; open the Event log and copy it by hand.', '', 'problem'); }
 }
 
 // ---------- setup ----------
 async function setup() {
+  setStatus('Tap Start');
   $('before').value = store.get('ll-before') || '3';
   $('before').onchange = () => { store.set('ll-before', $('before').value); if (!running) renderScript(); };
   $('perCharacter').checked = store.get('ll-per-character') !== 'off';
   $('perCharacter').onchange = () => store.set('ll-per-character', $('perCharacter').checked ? 'on' : 'off');
   $('mode').value = store.get('ll-mode') === 'drill' ? 'drill' : 'run';
-  $('mode').onchange = () => { store.set('ll-mode', $('mode').value); if (!running) renderScript(); };
+  // Two big buttons stand in for the mode list; the list itself keeps the value.
+  const syncMode = () => document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === $('mode').value));
+  $('mode').onchange = () => { store.set('ll-mode', $('mode').value); syncMode(); if (!running) renderScript(); };
+  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); }; });
+  syncMode();
+  // Dark unless the phone asks for light; the button overrides either way and is remembered.
+  const themeLabel = () => {
+    const light = document.documentElement.dataset.theme === 'light'
+      || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: light)').matches);
+    $('theme').textContent = light ? 'Dark' : 'Light';
+    $('theme').setAttribute('aria-label', `Switch to ${light ? 'dark' : 'light'} theme`);
+    return light;
+  };
+  $('theme').onclick = () => {
+    const light = themeLabel();
+    document.documentElement.dataset.theme = light ? 'dark' : 'light';
+    store.set('ll-theme', light ? 'dark' : 'light');
+    themeLabel();
+  };
+  themeLabel();
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', themeLabel);
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
@@ -433,7 +530,8 @@ async function setup() {
   $('copy').onclick = copyReport;
 
   const cont = document.createElement('label');
-  cont.innerHTML = '<input id="continuous" type="checkbox"> Continuous listening';
+  cont.className = 'setting';
+  cont.innerHTML = '<input id="continuous" type="checkbox"><span>Continuous listening<small class="note">Try it if the phone cuts you off</small></span>';
   $('localWrap').before(cont);
   $('continuous').checked = store.get('ll-continuous') === 'on';
   $('continuous').onchange = () => store.set('ll-continuous', $('continuous').checked ? 'on' : 'off');
@@ -451,7 +549,7 @@ async function setup() {
       } catch (err) { log(`on-phone check failed: ${err.message}`); }
     }
   } else log('on-phone listening: not offered by this browser');
-  if (!R && !SIM) setStatus('This browser cannot listen. Open it in Chrome.', 'paused');
+  if (!R && !SIM) setStatus('This browser cannot listen. Open it in Chrome.', '', 'problem');
 
   if (SIM) {
     $('sim').style.display = 'flex';

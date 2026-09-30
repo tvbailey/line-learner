@@ -3,7 +3,7 @@
   "short_name": "Line Runner",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#1d2433",
-  "theme_color": "#1d2433",
+  "background_color": "#14151b",
+  "theme_color": "#14151b",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }
