@@ -46,3 +46,19 @@ export function drillSteps(steps) {
   });
   return out;
 }
+
+// Jump ahead: of the lines read aloud before each of the actor's lines, keep only the last
+// `keep` (0 keeps everything). Lines after his last line are skipped.
+export function trimCues(steps, keep) {
+  if (!keep) return steps;
+  const out = steps.slice();
+  let heard = keep;
+  for (let i = out.length - 1; i >= 0; i--) {
+    const st = out[i];
+    if (st.action === 'listen') { heard = 0; continue; }
+    if (st.action !== 'speak' && st.action !== 'cue') continue;
+    if (heard >= keep) out[i] = { ...st, action: 'skip' };
+    else heard++;
+  }
+  return out;
+}

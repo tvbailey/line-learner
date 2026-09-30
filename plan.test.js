@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, drillSteps } from './plan.js';
+import { planScene, drillSteps, trimCues } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -57,4 +57,20 @@ test('drill: only my lines with made-up words, each after the line before it as 
   const items = parseScript('# S\nMOTHER: The furnace again, dear.\nTHE OLD MAN: {Consarned} ash!\nMOTHER: Well?\nTHE OLD MAN: Quiet!\nRANDY: Wow.\nTHE OLD MAN: Oh, {flibberdygibbit}!\n').scenes[0].items;
   const drill = drillSteps(planScene(items, 'THE OLD MAN')).map((s) => `${s.action}:${s.item.text}`);
   assert.deepEqual(drill, ['cue:The furnace again, dear.', 'listen:{Consarned} ash!', 'cue:Wow.', 'listen:Oh, {flibberdygibbit}!']);
+});
+
+test('trimCues: keep only the last N lines read before each of mine', () => {
+  const items = parseScript('# S\nA: one\nB: two\nA: three\nB: four\nTHE OLD MAN: Mine.\nA: five\nTHE OLD MAN: Mine again.\n').scenes[0].items;
+  const out = trimCues(planScene(items, 'THE OLD MAN'), 2).map((s) => `${s.action}:${s.item.text}`);
+  assert.deepEqual(out, ['skip:one', 'skip:two', 'speak:three', 'speak:four', 'listen:Mine.', 'speak:five', 'listen:Mine again.']);
+});
+
+test('trimCues: 0 means read everything', () => {
+  const items = parseScript('# S\nA: one\nB: two\nTHE OLD MAN: Mine.\n').scenes[0].items;
+  assert.deepEqual(trimCues(planScene(items, 'THE OLD MAN'), 0).map((s) => s.action), ['speak', 'speak', 'listen']);
+});
+
+test('trimCues: lines after my last line are skipped too', () => {
+  const items = parseScript('# S\nTHE OLD MAN: Mine.\nA: after\nB: more\n').scenes[0].items;
+  assert.deepEqual(trimCues(planScene(items, 'THE OLD MAN'), 3).map((s) => s.action), ['listen', 'skip', 'skip']);
 });

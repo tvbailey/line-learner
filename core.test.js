@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText } from './core.js';
+import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, voiceFor } from './core.js';
 
 test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
@@ -133,4 +133,19 @@ test('compareLine: a clean line is not marked as a restart', () => {
 test('promptText and cleanText drop the braces', () => {
   assert.equal(cleanText('The {fumulgatin} furnace'), 'The fumulgatin furnace');
   assert.equal(promptText('{Consarned}, goobly ash!', 2), 'Consarned, goobly ash!');
+});
+
+test('voiceFor: the same character always gets the same voice', () => {
+  assert.deepEqual(voiceFor('MOTHER', 5), voiceFor('MOTHER', 5));
+});
+
+test('voiceFor: women and kids sound higher, men lower', () => {
+  assert.ok(voiceFor('MOTHER', 5).pitch > 1);
+  assert.ok(voiceFor('RANDY', 5).pitch > voiceFor('MOTHER', 5).pitch);
+  assert.ok(voiceFor('JEAN', 5).pitch < 1);
+});
+
+test('voiceFor: different characters spread across the available voices', () => {
+  const picks = new Set(['MOTHER', 'RALPHIE', 'RANDY', 'JEAN', 'MISS SHIELDS'].map((n) => voiceFor(n, 5).voice));
+  assert.ok(picks.size >= 3);
 });

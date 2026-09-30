@@ -1,5 +1,5 @@
 // Reads the plain-text script format (see README) into scenes of items.
-import { normalize } from './core.js?v=20260929a';
+import { normalize } from './core.js?v=20260929b';
 
 // Small stable hash (FNV-1a) so a line's id depends only on its own scene, speaker and words.
 function hash(s) {

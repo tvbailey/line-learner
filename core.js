@@ -194,3 +194,18 @@ export function isSoundOnly(text) {
   const words = normalize(stripDirections(text));
   return words.length > 0 && words.every((w) => SOUND.test(w));
 }
+
+// A voice for each character: the same one every time, spread across the phone's voices,
+// with women and kids pitched higher and men lower so parts are easy to tell apart.
+const WOMEN = /MOTHER|MOM|MISS SHIELDS|MRS\.|WOMEN|WOMAN|ESTHER|MARY|GIRL|TOWNSWOMEN/;
+const KIDS = /RALPHIE|RANDY|KIDS|FLICK|SCHWARTZ$|FARKUS|DILL|CHILD/;
+export function voiceFor(name, voiceCount) {
+  let h = 7;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const voice = voiceCount ? h % voiceCount : 0;
+  if (WOMEN.test(name)) return { voice, pitch: 1.25, rate: 1, kind: 'woman' };
+  if (KIDS.test(name)) return { voice, pitch: 1.5, rate: 1.08, kind: 'kid' };
+  // Jean is the narrator: the grown-up Ralphie, an older man, so lower and a touch slower.
+  if (name === 'JEAN') return { voice, pitch: 0.7, rate: 0.93, kind: 'man' };
+  return { voice, pitch: 0.8, rate: 1, kind: 'man' };
+}

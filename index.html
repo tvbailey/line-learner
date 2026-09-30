@@ -64,6 +64,8 @@
   <div class="pick"><select id="scene" aria-label="Scene"></select></div>
   <div class="pick"><select id="mode" aria-label="Practice mode"><option value="run">Run the scene</option><option value="drill">Made-up words drill</option></select></div>
   <label class="toggle"><input id="skipSongs" type="checkbox" checked> Dialogue only (skip everything inside songs)</label>
+  <label class="toggle">Read before each of your lines:
+    <select id="before"><option value="1">1 line</option><option value="2">2 lines</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="0">everything</option></select></label>
 
   <div id="status" class="status">Tap Start</div>
   <div class="controls">
@@ -71,12 +73,12 @@
     <button id="pause">Pause</button>
     <button id="repeat">Repeat cue</button>
     <button id="lineBtn">Line</button>
-    <button id="copy">Copy report</button>
   </div>
   <div id="sim"><input id="simText" placeholder="Type what you would say"><button id="simSay">Say</button></div>
 
   <div id="script" class="script"></div>
   <div id="summary" class="script summary" hidden></div>
+  <div class="controls" style="margin-top:12px"><button id="copy">Copy report</button></div>
   <div id="big" class="big" hidden></div>
 
   <details>
@@ -108,7 +110,8 @@
     <summary>Settings</summary>
     <label for="gap">Wait before moving on: <span id="gapVal">1.5</span> seconds</label>
     <input id="gap" type="range" min="0.8" max="4" step="0.1" value="1.5">
-    <label for="voice">Voice for the other parts</label>
+    <label class="toggle"><input id="perCharacter" type="checkbox" checked> A different voice for each character</label>
+    <label for="voice">Voice for the other parts (when the box above is off)</label>
     <select id="voice"></select>
     <label id="localWrap" hidden><input id="local" type="checkbox"> Try on-phone listening (experimental; keeps audio off Google's servers if it works)</label>
   </details>
@@ -118,6 +121,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20260929a"></script>
+<script type="module" src="app.js?v=20260929b"></script>
 </body>
 </html>

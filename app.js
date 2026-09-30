@@ -1,8 +1,8 @@
 // Line Learner voice test: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords } from './core.js?v=20260929a';
-import { parseScript } from './script.js?v=20260929a';
-import { planScene, drillSteps } from './plan.js?v=20260929a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929b';
+import { parseScript } from './script.js?v=20260929b';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20260929b';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -72,7 +72,8 @@ function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
   const drill = $('mode').value === 'drill';
   // The drill takes every line with made-up words, songs included.
-  steps = drill ? drillSteps(planScene(scene.items, me)) : planScene(scene.items, me, { skipSongs: $('skipSongs').checked });
+  steps = drill ? drillSteps(planScene(scene.items, me))
+    : trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value));
   $('script').innerHTML = '';
   $('summary').hidden = true;
   if (drill && !steps.length) $('script').textContent = 'No made-up words in this scene.';
@@ -124,9 +125,11 @@ function showHeard(i, heard, result, prompted) {
 
 // ---------- speaking ----------
 let voice = null;
+let voiceList = [];
 function loadVoices() {
   if (!('speechSynthesis' in window)) return;
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('en'));
+  voiceList = voices;
   const sel = $('voice');
   const current = sel.value;
   sel.innerHTML = '';
@@ -138,11 +141,21 @@ function loadVoices() {
   if (current) sel.value = current;
   voice = voices[Number(sel.value) || 0] || null;
   sel.onchange = () => { voice = voices[Number(sel.value)] || null; };
-  log(`voices available: ${voices.length}`);
+  log(`voices available: ${voices.length}${voices.length ? ` (${voices.map((v) => v.name).join('; ')})` : ''}`);
+}
+
+// Phones name some voices by gender or a person's name; use that when it's there.
+// Kids share the women's voices, pitched up. Without any hints, every voice is fair game.
+const FEMALE_HINT = /female|woman|girl|zira|samantha|susan|karen|moira|tessa|victoria|aria|jenny|sonia|libby|emma|ava|allison/i;
+const MALE_HINT = /\bmale\b|\bman\b|david|mark|daniel|alex|fred|guy|ryan|george|tom|aaron|christopher/i;
+function voicesFor(kind) {
+  if (kind === 'man') return voiceList.filter((v) => MALE_HINT.test(v.name) && !/female/i.test(v.name));
+  return voiceList.filter((v) => FEMALE_HINT.test(v.name));
 }
 
 let speaking = false;
-function speak(text) {
+// `who` picks that character's own voice when "a different voice for each character" is on.
+function speak(text, who = '') {
   return new Promise((resolve) => {
     speaking = true;
     const done = (why) => { if (!speaking) return; speaking = false; clearTimeout(timer); if (why) log(`speech ${why}`); resolve(); };
@@ -151,7 +164,12 @@ function speak(text) {
     if (SIM || !('speechSynthesis' in window)) return;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    if (voice) u.voice = voice;
+    if (who && $('perCharacter').checked && voiceList.length) {
+      const v = voiceFor(who, voiceList.length);
+      const pool = voicesFor(v.kind);
+      u.voice = pool.length ? pool[v.voice % pool.length] : voiceList[v.voice];
+      u.pitch = v.pitch; u.rate = v.rate;
+    } else if (voice) u.voice = voice;
     u.onend = () => done();
     u.onerror = (e) => done(`error: ${e.error}`);
     speechSynthesis.speak(u);
@@ -232,10 +250,10 @@ let tapCommand = null;
 
 function gapMs() { return Number($('gap').value) * 1000; }
 
-async function sayOther(text) {
+async function sayOther(text, who = '') {
   stopListening();
   setStatus('Reading the cue...');
-  await speak(cleanText(stripDirections(text)));
+  await speak(cleanText(stripDirections(text)), who);
 }
 
 // Wait for one of his lines, handling commands, until he says a real line.
@@ -317,12 +335,12 @@ async function runScene() {
   for (let i = 0; i < steps.length && running; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
-    if (action === 'cue') { if ($('mode').value === 'drill') highlight(i); lastCue = stripDirections(item.text); await sayOther(item.text); continue; }
+    if (action === 'cue') { if ($('mode').value === 'drill') highlight(i); lastCue = stripDirections(item.text); await sayOther(item.text, item.who); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
       lastCue = stripDirections(item.text);
-      await sayOther(item.text);
+      await sayOther(item.text, item.who);
       continue;
     }
     const expected = stripDirections(item.text);
@@ -380,6 +398,10 @@ async function copyReport() {
 
 // ---------- setup ----------
 async function setup() {
+  $('before').value = store.get('ll-before') || '3';
+  $('before').onchange = () => { store.set('ll-before', $('before').value); if (!running) renderScript(); };
+  $('perCharacter').checked = store.get('ll-per-character') !== 'off';
+  $('perCharacter').onchange = () => store.set('ll-per-character', $('perCharacter').checked ? 'on' : 'off');
   $('mode').value = store.get('ll-mode') === 'drill' ? 'drill' : 'run';
   $('mode').onchange = () => { store.set('ll-mode', $('mode').value); if (!running) renderScript(); };
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
