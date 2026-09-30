@@ -1,0 +1,247 @@
+﻿<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Line Runner - Wings</title>
+<style>
+:root{color-scheme:dark;--bg:#14151b;--surface:#20212b;--ink:#f0edf6;--muted:#b9b7c7;--rule:#696779;--accent:#c7b5ff;--accent-bg:#292438;--action:#c7b5ff;--on-action:#211932;--ok:#91d6ab;--check:#f5be78;--bad:#ff9eaa;--shadow:#090a0e}
+:root[data-theme=light]{color-scheme:light;--bg:#f5f3f8;--surface:#fff;--ink:#24212e;--muted:#605b70;--rule:#827a91;--accent:#63428e;--accent-bg:#eae2f4;--action:#63428e;--on-action:#fff;--ok:#216b43;--check:#885007;--bad:#a32640;--shadow:#ded9e8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--shadow);color:var(--ink);font:1rem/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+button,select,input{font:inherit}
+button,select,summary{min-height:48px;min-width:48px}
+button{cursor:pointer;border:1px solid var(--rule);border-radius:12px;padding:10px 14px;background:var(--surface);color:var(--ink);font-weight:650;line-height:1.3}
+button:hover{border-color:var(--accent)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+button:disabled{cursor:default}
+[hidden]{display:none!important}
+.phone{max-width:412px;margin:auto;background:var(--bg);min-height:100dvh}
+.preview{padding:8px 12px;border-bottom:1px dashed var(--rule);background:var(--surface)}
+.preview-label{display:block;font-size:.75rem;color:var(--muted);margin-bottom:6px;letter-spacing:.08em;text-transform:uppercase}
+.nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.nav button{font-size:.75rem;padding:6px 2px;border-radius:8px}
+.nav button[aria-pressed=true]{box-shadow:inset 0 -3px var(--accent);font-weight:800}
+main{min-height:calc(100dvh - 95px)}
+.screen{padding:24px 22px 0}
+.brand{display:flex;align-items:center;gap:10px;font-size:.8rem;font-weight:750;letter-spacing:.15em;text-transform:uppercase}
+.brand svg{width:26px;height:24px;flex:none;color:var(--accent)}
+.eyebrow{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+h1,h2,p{margin:0}
+h1{font-size:3.25rem;letter-spacing:-.055em;line-height:1.05;font-weight:760;margin-top:26px}
+h2{font-size:1.55rem;letter-spacing:-.025em;line-height:1.25}
+.sub{color:var(--muted);margin-top:12px}
+.hero{padding-bottom:26px}
+.role{margin-top:22px;display:flex;gap:12px;align-items:center;padding:14px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.role b{font-size:1.3rem}.role span{margin-left:auto;color:var(--muted)}
+label{display:block;font-weight:650;margin:18px 0 8px}
+select{width:100%;padding:12px;background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:12px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.duo button{min-height:64px}
+.duo button[aria-pressed=true]{background:var(--accent-bg);border:2px solid var(--accent);padding:9px 13px}
+.duo button[aria-pressed=true]::before{content:"\2713 ";font-weight:900}
+details{border-top:1px solid var(--rule);margin-top:22px}
+summary{cursor:pointer;display:list-item;padding:14px 0;font-weight:650}
+.setting{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0}
+.setting span{flex:1}
+.setting button{min-width:72px}
+.setting select{width:106px}
+input[type=range]{width:100%;height:48px;accent-color:var(--accent)}
+.primary{background:var(--action);color:var(--on-action);border-color:var(--action)}
+.footer{padding:20px 0 max(20px,env(safe-area-inset-bottom));display:grid;gap:8px}
+.footer button{min-height:58px}
+.start{font-size:1.2rem;display:flex;align-items:center;justify-content:space-between}
+.note{font-size:.875rem;color:var(--muted)}
+.run{padding-top:18px}
+.run .brand{justify-content:space-between}
+.run .brand span:last-child{font-size:.75rem;letter-spacing:0;color:var(--muted);text-transform:none;font-weight:500}
+.state-preview{display:flex;gap:8px;margin-top:18px}
+.state-preview button{flex:1;font-size:.875rem}
+.state-preview button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -3px var(--accent)}
+.turn{margin:22px -22px 0;padding:20px 22px;background:var(--surface);border-left:6px solid var(--muted)}
+.turn.you{border-left-color:var(--accent);background:var(--accent-bg)}
+.turn h1{margin:0;font-size:2.6rem;letter-spacing:-.04em}
+.turn p{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:1.15rem}
+.turn svg{width:25px;height:25px;flex:none}
+.turn.you h1{color:var(--accent)}
+.script{padding-top:25px}
+.script .eyebrow{margin-bottom:12px}
+.line{font-size:1.85rem;line-height:1.3;font-weight:650;letter-spacing:-.025em;overflow-wrap:break-word}
+.line mark{background:transparent;color:inherit;text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:5px;text-decoration-thickness:2px}
+.script .note{margin-top:16px}
+.context{padding:0 0 18px}
+.context p{color:var(--muted);margin:12px 0}
+.context b{display:block;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em}
+.controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:18px 0 max(22px,env(safe-area-inset-bottom))}
+.controls button{min-height:64px;padding:8px 6px}
+.voice-hint{margin-top:22px;padding-top:18px;border-top:1px solid var(--rule);font-size:1rem}
+.after h1{font-size:2.8rem}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+.badge{font-size:.875rem;font-weight:750;display:inline-flex;gap:7px;align-items:center}
+.legend .badge{border:1px solid currentColor;border-radius:6px;padding:5px 8px}
+.ok{color:var(--ok)}.check{color:var(--check)}.bad{color:var(--bad)}
+.results{margin-top:26px}
+.result{border-top:1px solid var(--rule);padding:20px 0}
+.result p{margin-top:10px;font-size:1.125rem}
+.result .heard{font-size:1rem;color:var(--muted);margin-top:12px}
+.result .heard strong{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.result .reason{font-size:.95rem;color:var(--muted)}
+.words{margin-top:20px}
+.words>p{margin:10px 0 20px;color:var(--muted)}
+.word-pair{padding:18px 16px;background:var(--surface);border-radius:12px;margin:10px 0;border:1px solid var(--rule)}
+.word-pair dl{margin:0 0 12px}
+.word-pair dt{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.word-pair dd{margin:3px 0 12px;font-size:1.25rem;overflow-wrap:anywhere;font-weight:650}
+.word-pair dd:last-child{margin-bottom:0}
+.copy-note{min-height:24px}
+dialog{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;margin:0;border:0;padding:28px 18px;background:var(--bg);color:var(--ink)}
+dialog::backdrop{background:var(--bg)}
+.flash-inner{max-width:390px;height:100%;min-height:400px;margin:auto;display:flex;flex-direction:column;justify-content:center}
+.flash-inner h2{font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.flash-word{font-size:clamp(1.75rem,8.3vw,2.15rem);font-weight:760;letter-spacing:-.04em;line-height:1.4;overflow-wrap:anywhere}
+.flash-words{border-left:4px solid var(--accent);padding-left:14px;margin:28px 0}
+.flash-word:first-child{font-size:clamp(2rem,12vw,3rem)}.flash-word+.flash-word{margin-top:20px}
+.flash-inner button{margin-top:32px;min-height:56px}
+@media(min-width:480px){.phone{margin:24px auto;border:1px solid var(--rule);border-radius:22px;overflow:hidden;box-shadow:0 24px 80px #0005}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="phone">
+<header class="preview">
+<span class="preview-label">Wings / design preview &middot; no audio</span>
+<nav class="nav" aria-label="Preview screens">
+<button data-go="setup" aria-pressed="true">Setup</button>
+<button data-go="run" aria-pressed="false">Running</button>
+<button data-go="after" aria-pressed="false">After</button>
+<button id="flash-open">Flash</button>
+<button id="theme" aria-label="Switch to light theme">Light</button>
+</nav>
+</header>
+<main>
+<section class="screen" id="setup" aria-labelledby="setup-title">
+<div class="brand"><svg viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M2 3v18M9 3v18M16 3v18M23 3v18"/></svg>Line Runner</div>
+<div class="hero"><h1 id="setup-title">Take your<br>place.</h1><p class="sub">The phone reads everyone else.<br>You bring the Old Man.</p></div>
+<div class="role"><span class="eyebrow" style="margin:0">Your part</span><b>Old Man</b></div>
+<label for="scene">Scene</label>
+<select id="scene"><option>Practice scene</option></select>
+<label>Practice mode</label>
+<div class="duo" role="group" aria-label="Practice mode">
+<button aria-pressed="true">Run the scene</button><button aria-pressed="false">Made-up words drill</button>
+</div>
+<details id="settings">
+<summary>Rehearsal settings</summary>
+<div class="setting"><span>Dialogue only<small class="note" style="display:block">Skip the songs</small></span><button role="switch" aria-checked="true" aria-label="Dialogue only">On</button></div>
+<label for="before">Read before each of your lines</label>
+<select id="before"><option>1 line</option><option>2 lines</option><option selected>3 lines</option><option>Everything</option></select>
+<label for="gap">Wait before moving on: <output id="gap-value">1.5</output> s</label>
+<p class="note">How long a silence ends your line</p>
+<input type="range" id="gap" min="0.8" max="4" step="0.1" value="1.5">
+<div class="setting"><span>Different voices for each character</span><button role="switch" aria-checked="true" aria-label="Different voices for each character">On</button></div>
+<p class="note">Mother: Aria. Ralphie: Emma, higher.<br>Example voices for this preview.</p>
+<div class="setting"><span>Continuous listening<small class="note" style="display:block">Try it if the phone cuts you off</small></span><button role="switch" aria-checked="false" aria-label="Continuous listening">Off</button></div>
+</details>
+<div class="footer"><button class="primary start" data-go="run">Start scene <span aria-hidden="true">&rarr;</span></button><p class="note">Say &ldquo;line&rdquo; if you are stuck.</p></div>
+</section>
+
+<section class="screen run" id="run" hidden aria-labelledby="turn-title">
+<div class="brand">Line Runner <span>Practice scene</span></div>
+<div class="state-preview" role="group" aria-label="Preview the running state">
+<button data-state="cue" aria-pressed="true">Preview cue</button><button data-state="you" aria-pressed="false">Preview your line</button>
+</div>
+<div class="turn" id="turn" role="status">
+<h1 id="turn-title">CUE</h1>
+<p><svg id="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9v6h4l5 4V5L7 9H3zM16 8q5 4 0 8"/></svg><span id="turn-detail">Mother is speaking</span></p>
+</div>
+<div class="script">
+<p class="eyebrow" id="speaker">Mother</p>
+<p class="line" id="current-line">Edison did not set the kitchen curtains on fire.</p>
+<p class="note" id="line-note">Your line is next.</p>
+</div>
+<p class="voice-hint">Need a prompt? Say <strong>&ldquo;line.&rdquo;</strong></p>
+<details class="context">
+<summary>Scene around this line</summary>
+<p><b>Mother</b>Dinner is on the table, and it is getting cold.</p>
+<p><b>Old Man</b>Hold your horses. I am in the middle of a very delicate operation.</p>
+<p><b>Mother</b>You have been in the middle of it since Tuesday.</p>
+<p><b>Old Man</b>Great inventions take time. Edison did not rush the light bulb.</p>
+<p><b>Mother</b>Edison did not set the kitchen curtains on fire.</p>
+<p><b>Old Man</b>Blastified, snorkel-wumpin' curtains! That was one small spark.</p>
+<p><b>Mother</b>Wash your hands. And do not stop at the door to admire your work.</p>
+<p><b>Old Man</b>I never pause. I am a man of action.</p>
+<p><b>Mother</b>Very nice, dear. Now wash your hands.</p>
+</details>
+<div class="controls"><button id="pause">Pause</button><button id="repeat">Repeat cue</button><button class="primary" id="line-button">Line</button></div>
+<p class="note" id="run-note" role="status"></p>
+</section>
+
+<section class="screen after" id="after" hidden aria-labelledby="after-title">
+<div class="brand">Line Runner / rehearsal notes</div>
+<h1 id="after-title">Scene done.</h1>
+<p class="sub">Practice scene &middot; sample results</p>
+<div class="legend" aria-label="Result key"><span class="badge ok">&#10003; Matched</span><span class="badge check">? Check</span><span class="badge bad">&times; Needs work</span></div>
+<div class="results">
+<article class="result"><span class="badge ok">&#10003; Matched</span><p>Hold your horses. I am in the middle of a very delicate operation.</p></article>
+<article class="result"><span class="badge bad">&times; Needs work</span><p>Great inventions take time. Edison did not rush the light bulb.</p><p class="heard"><strong>Phone heard</strong>&ldquo;Great inventions take time. Edison never hurried.&rdquo;</p><p class="reason">Missing: <b>did not rush the light bulb</b></p></article>
+<article class="result"><span class="badge check">? Check</span><p>Blastified, snorkel-wumpin' curtains! That was one small spark.</p><p class="heard"><strong>Phone heard</strong>&ldquo;blast if I'd snorkel wumpin curtains that was one small spark&rdquo;</p><p class="reason">Probably the phone mishearing you.</p></article>
+</div>
+<div class="words">
+<h2>Made-up words</h2><p>Script vs. what the phone heard</p>
+<div class="word-pair"><dl><dt>Script</dt><dd>Blastified</dd><dt>Phone heard</dt><dd>blast if I'd</dd></dl><span class="badge ok">&#10003; Sounds close</span></div>
+<div class="word-pair"><dl><dt>Script</dt><dd>snorkel-wumpin'</dd><dt>Phone heard</dt><dd>snorkel wumpin</dd></dl><span class="badge ok">&#10003; Sounds close</span></div>
+<div class="word-pair"><dl><dt>Script</dt><dd>fragglesnatch</dd><dt>Phone heard</dt><dd>(nothing)</dd></dl><span class="badge check">? Check this one</span></div>
+<p class="note">The phone only knows if they sound close. You are the judge of exact.</p>
+</div>
+<div class="footer"><button data-go="run">Run again</button><button id="copy" class="primary">Copy report</button><p id="copy-note" class="note copy-note" role="status">Preview only. No rehearsal has been recorded.</p></div>
+</section>
+</main>
+</div>
+<dialog id="flash" aria-labelledby="flash-title">
+<div class="flash-inner"><h2 id="flash-title">Check yourself</h2><div class="flash-words"><p class="flash-word">Blastified</p><p class="flash-word">snorkel-wumpin'</p></div><p class="sub">The phone only knows if they sound close.<br>You are the judge of exact.</p><button id="flash-close" autofocus>Back to preview</button><p class="note" style="margin-top:12px">Static preview. This does not time out.</p></div>
+</dialog>
+<script>
+// Design-state toggles only. No microphone, audio, storage, clipboard, or real scoring.
+const $ = id => document.getElementById(id);
+const cue = 'Edison did not set the kitchen curtains on fire.';
+const mine = "<mark>Blastified</mark>, <mark>snorkel-wumpin'</mark> curtains! That was one small spark.";
+let state = 'cue', paused = false;
+function renderState(){
+ const you = state === 'you';
+ $('turn').className = 'turn' + (you && !paused ? ' you' : '');
+ $('turn-title').textContent = paused ? 'PAUSED' : you ? 'YOUR LINE' : 'CUE';
+ $('turn-detail').textContent = paused ? 'Rehearsal on hold' : you ? 'Listening for you' : 'Mother is speaking';
+ $('state-icon').innerHTML = paused ? '<path d="M8 5v14M16 5v14"/>' : you ? '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>' : '<path d="M3 9v6h4l5 4V5L7 9H3zM16 8q5 4 0 8"/>';
+ $('speaker').textContent = you ? 'Old Man / you' : 'Mother';
+ $('current-line').innerHTML = you ? mine : cue;
+ $('line-note').textContent = you ? 'Underlined words are the made-up ones.' : 'Your line is next.';
+ $('pause').textContent = paused ? 'Resume' : 'Pause';
+ document.querySelectorAll('[data-state]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.state===state));
+}
+function go(id){
+ document.querySelectorAll('.screen').forEach(s=>s.hidden=s.id!==id);
+ document.querySelectorAll('.nav [data-go]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.go===id));
+ if(id==='run'){paused=false;renderState()}
+ window.scrollTo(0,0);
+}
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>{state=b.dataset.state;paused=false;renderState()});
+$('theme').onclick=()=>{
+ const light=document.documentElement.dataset.theme!=='light';
+ document.documentElement.dataset.theme=light?'light':'dark';
+ $('theme').textContent=light?'Dark':'Light';
+ $('theme').setAttribute('aria-label','Switch to '+(light?'dark':'light')+' theme');
+};
+$('flash-open').onclick=()=>$('flash').showModal();
+$('flash-close').onclick=()=>$('flash').close();
+document.querySelectorAll('[role=switch]').forEach(b=>b.onclick=()=>{const on=b.getAttribute('aria-checked')!=='true';b.setAttribute('aria-checked',on);b.textContent=on?'On':'Off'});
+document.querySelectorAll('.duo button').forEach(b=>b.onclick=()=>document.querySelectorAll('.duo button').forEach(x=>x.setAttribute('aria-pressed',x===b)));
+$('gap').oninput=()=>$('gap-value').textContent=$('gap').value;
+$('pause').onclick=()=>{paused=!paused;renderState()};
+$('repeat').onclick=()=>{state='cue';paused=false;renderState();$('run-note').textContent='Cue preview. No audio plays.'};
+$('line-button').onclick=()=>{state='you';paused=false;renderState();$('run-note').textContent='Prompt preview. No audio plays.'};
+$('copy').onclick=()=>$('copy-note').textContent='Preview only: the live app would copy your report here.';
+</script>
+</body>
+</html>
+

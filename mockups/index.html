@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Line Runner looks</title>
+<style>
+  :root { --bg: #f6f4ef; --fg: #1d2433; --muted: #5d6475; --card: #fff; --line: #d9d5cb; --accent: #2f6fde; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171f; --fg: #eceff5; --muted: #9aa3b5; --card: #1d2230; --line: #333a4b; --accent: #6b9cff; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 18px/1.45 system-ui, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 16px; }
+  a.card { display: block; text-decoration: none; color: inherit; background: var(--card); border: 1px solid var(--line);
+           border-radius: 14px; padding: 14px 16px; margin: 0 0 12px; min-height: 48px; }
+  a.card b { color: var(--accent); font-size: 1.1rem; }
+  a.card span { display: block; color: var(--muted); font-size: 0.95rem; margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Line Runner: four looks</h1>
+  <p>Mockups only; the buttons don't run lines. Try each in the dark too.</p>
+  <a class="card" href="option-1-backstage.html"><b>1. Backstage</b><span>By Fable. A rehearsal room at night: warm dark, one amber "ghost light" for your turn, script-style type.</span></a>
+  <a class="card" href="option-2-dashboard.html"><b>2. Dashboard</b><span>By Fable. Built for the car: a big band says whose turn it is, huge text, a giant Line button.</span></a>
+  <a class="card" href="option-3-quiet-page.html"><b>3. Quiet Page</b><span>By Fable. Like holding the script: the whole scene on one calm page, the current line growing large.</span></a>
+  <a class="card" href="option-4-wings.html"><b>4. Wings</b><span>By Astra. Graphite and violet, a big CUE / YOUR LINE heading always in the same place, bold type.</span></a>
+</main>
+</body>
+</html>

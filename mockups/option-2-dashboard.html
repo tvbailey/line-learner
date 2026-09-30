@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Line Runner - Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  /* ---------- tokens: built for arm's length, night first ---------- */
+  :root {
+    --bg: #121212;
+    --surface: #1e1e1e;
+    --surface2: #2a2a2a;
+    --ink: #f7f7f2;
+    --muted: #b8b8b0;
+    --line: #3a3a3a;
+    --you: #ffd54a;      /* your turn: the one loud color */
+    --on-you: #141200;
+    --cue: #7cc4ff;      /* the phone speaking */
+    --on-cue: #001a2e;
+    --hold: #9a9a9a;     /* paused */
+    --ok: #6fd88f;  --on-ok: #04200c;
+    --maybe: #ffb347; --on-maybe: #2a1600;
+    --bad: #ff7b6e;  --on-bad: #2e0600;
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f4f0;
+    --surface: #ffffff;
+    --surface2: #e9e9e2;
+    --ink: #141414;
+    --muted: #55554f;
+    --line: #cfcfc6;
+    --you: #ffcc00;  --on-you: #141200;
+    --cue: #1b6fc2;  --on-cue: #ffffff;
+    --hold: #6b6b6b;
+    --ok: #1f7a3d;  --on-ok: #ffffff;
+    --maybe: #a35500; --on-maybe: #ffffff;
+    --bad: #b8271c;  --on-bad: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: #000; color: var(--ink); font: 18px/1.4 "Lexend", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  :root[data-theme="light"] body { background: #b9b9b0; }
+
+  .phone { position: relative; margin: 0 auto; background: var(--bg); width: 100%; max-width: 412px; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  @media (min-width: 480px) { .phone { height: 860px; margin: 24px auto; border-radius: 28px; box-shadow: 0 30px 80px rgba(0,0,0,.6); } }
+
+  .mock-nav { display: flex; gap: 4px; padding: 6px 8px; background: #000; color: #ddd; font: 12px/1 system-ui; align-items: center; border-bottom: 1px dashed #444; flex: none; }
+  .mock-nav span { opacity: .6; margin-right: 4px; }
+  .mock-nav button { font: inherit; background: #222; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 6px 8px; min-height: 32px; }
+  .mock-nav button[aria-pressed="true"] { background: #ffd54a; color: #000; border-color: #ffd54a; }
+  .mock-nav .theme { margin-left: auto; }
+
+  .screen { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .screen.on { display: flex; }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+
+  /* ---------- shared ---------- */
+  h1 { margin: 0; font-size: 34px; line-height: 1.05; font-weight: 800; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 6px 0 0; font-size: 16px; }
+  .label { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 20px 0 8px; }
+  .big-pick { display: grid; gap: 8px; }
+  .big-pick button { font: inherit; font-weight: 600; font-size: 20px; text-align: left; min-height: 64px; padding: 12px 16px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); display: flex; align-items: center; gap: 12px; width: 100%; }
+  .big-pick button small { display: block; font-weight: 400; font-size: 14px; color: var(--muted); }
+  .big-pick button .t { flex: 1; }
+  .big-pick button .radio { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--muted); flex: none; }
+  .big-pick button[aria-pressed="true"] { border-color: var(--you); background: color-mix(in srgb, var(--you) 12%, var(--surface)); }
+  .big-pick button[aria-pressed="true"] .radio { border-color: var(--you); background: radial-gradient(circle, var(--you) 45%, transparent 50%); }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .seg button { font: inherit; font-weight: 600; font-size: 17px; min-height: 64px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 10px; }
+  .seg button[aria-pressed="true"] { background: var(--you); color: var(--on-you); border-color: var(--you); }
+  .seg button small { display: block; font-weight: 400; font-size: 13px; opacity: .8; }
+  .row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .row:first-of-type { border-top: 0; }
+  .row .lbl { flex: 1; font-weight: 600; font-size: 18px; }
+  .row .lbl small { display: block; font-weight: 400; font-size: 14px; color: var(--muted); }
+  .chip { min-width: 64px; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); font: 800 22px/1 inherit; display: inline-flex; align-items: center; justify-content: center; }
+  .switch { position: relative; width: 64px; height: 36px; border-radius: 18px; background: var(--line); border: 0; padding: 0; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); transition: left .15s; }
+  .switch[aria-checked="true"] { background: var(--you); }
+  .switch[aria-checked="true"]::after { left: 32px; background: var(--on-you); }
+  .switch .txt { position: absolute; inset: 0; font-size: 0; }
+  .switch-wrap { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+  .switch-wrap .state { font-size: 14px; font-weight: 600; color: var(--muted); width: 28px; text-align: right; }
+  .chev { color: var(--muted); font-size: 26px; }
+  .range { -webkit-appearance: none; width: 100%; height: 48px; background: transparent; }
+  .range::-webkit-slider-runnable-track { height: 8px; background: var(--line); border-radius: 4px; }
+  .range::-webkit-slider-thumb { -webkit-appearance: none; width: 32px; height: 32px; margin-top: -12px; border-radius: 50%; background: var(--you); border: 3px solid var(--bg); }
+  .btn { font: inherit; font-weight: 800; min-height: 56px; padding: 0 18px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface2); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+  .btn.primary { background: var(--you); color: var(--on-you); border-color: var(--you); font-size: 22px; }
+  :focus-visible { outline: 4px solid var(--cue); outline-offset: 2px; }
+  .foot { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); display: flex; gap: 10px; }
+  .foot .btn { flex: 1; min-height: 64px; }
+  .foot .btn.primary { font-size: 20px; }
+  .controls .btn { font-size: 18px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  /* ---------- running: the dashboard ---------- */
+  .band { flex: none; display: flex; align-items: center; gap: 14px; padding: 16px; min-height: 96px; }
+  .band svg { width: 40px; height: 40px; flex: none; }
+  .band .word { font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+  .band .word small { display: block; font-size: 15px; font-weight: 600; margin-top: 6px; opacity: .85; }
+  .band.cue { background: var(--cue); color: var(--on-cue); }
+  .band.you { background: var(--you); color: var(--on-you); }
+  .band.hold { background: var(--hold); color: #000; }
+  .band .bars { display: flex; gap: 4px; align-items: flex-end; height: 34px; margin-left: auto; }
+  .band .bars i { width: 6px; background: currentColor; border-radius: 3px; height: 40%; animation: eq 1s infinite ease-in-out; }
+  .band .bars i:nth-child(2) { height: 90%; animation-delay: .15s; } .band .bars i:nth-child(3) { height: 60%; animation-delay: .3s; } .band .bars i:nth-child(4) { height: 100%; animation-delay: .1s; } .band .bars i:nth-child(5) { height: 50%; animation-delay: .25s; }
+  @keyframes eq { 50% { transform: scaleY(.4); } }
+  .dash { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px 0; overflow: hidden; }
+  .prev { color: var(--muted); font-size: 16px; line-height: 1.35; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+  .prev b { display: block; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  .prev.dim { opacity: .55; }
+  .now { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 8px 0; }
+  .now .who { font-size: 15px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .now .who.you { color: var(--you); }
+  .now .who.cue { color: var(--cue); }
+  .now .text { font-size: 30px; line-height: 1.25; font-weight: 600; margin-top: 8px; overflow-wrap: anywhere; }
+  .now .text .mu { background: color-mix(in srgb, var(--you) 22%, transparent); border-bottom: 3px solid var(--you); }
+  .next { color: var(--muted); font-size: 16px; line-height: 1.35; padding: 10px 0 12px; border-top: 1px solid var(--line); }
+  .next b { display: block; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  .state-toggle { position: absolute; right: 12px; top: 130px; display: flex; gap: 4px; background: #000c; padding: 4px; border-radius: 8px; font: 11px/1 system-ui; z-index: 5; }
+  .state-toggle button { font: inherit; min-height: 32px; border: 1px solid #555; background: #222; color: #eee; border-radius: 6px; padding: 0 8px; }
+  .state-toggle button[aria-pressed="true"] { background: #ffd54a; color: #000; }
+  .controls { flex: none; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+  .controls .btn { min-height: 64px; font-size: 19px; }
+  .controls .btn svg { width: 26px; height: 26px; }
+  .controls .line { grid-column: 1 / -1; min-height: 80px; font-size: 26px; }
+  .controls .line small { font-size: 14px; font-weight: 600; opacity: .8; margin-left: 4px; }
+
+  /* ---------- after ---------- */
+  .tally { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0 4px; }
+  .tally div { border-radius: 16px; padding: 12px 6px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .tally svg { width: 28px; height: 28px; }
+  .tally b { font-size: 34px; line-height: 1; }
+  .tally span { font-size: 13px; font-weight: 600; }
+  .tally .ok { background: var(--ok); color: var(--on-ok); } .tally .maybe { background: var(--maybe); color: var(--on-maybe); } .tally .bad { background: var(--bad); color: var(--on-bad); }
+  .res { display: grid; grid-template-columns: 56px 1fr; gap: 0 12px; margin: 10px 0; background: var(--surface); border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+  .res .badge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 8px 2px; text-align: center; line-height: 1.1; }
+  .res .badge svg { width: 26px; height: 26px; }
+  .res.ok .badge { background: var(--ok); color: var(--on-ok); } .res.maybe .badge { background: var(--maybe); color: var(--on-maybe); } .res.bad .badge { background: var(--bad); color: var(--on-bad); }
+  .res .body { padding: 10px 12px 10px 0; }
+  .res .line { font-size: 17px; font-weight: 600; line-height: 1.3; }
+  .res .heard { display: block; margin-top: 6px; font-size: 15px; color: var(--muted); line-height: 1.35; }
+  .res .heard b { color: var(--ink); font-weight: 400; }
+  .res .heard .miss { color: var(--bad); text-decoration: line-through; }
+  .res.other { grid-template-columns: 1fr; background: transparent; border: 0; margin: 4px 0; }
+  .res.other .body { padding: 2px 4px; color: var(--muted); font-size: 15px; }
+  .res.other .body b { display: block; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .mu-list { display: grid; gap: 8px; }
+  .mu-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
+  .mu-row .cell { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; min-height: 56px; }
+  .mu-row .cell small { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .mu-row .cell b { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+  .mu-row .verdict { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; padding: 6px 10px; border-radius: 10px; min-height: 40px; }
+  .mu-row .verdict svg { width: 20px; height: 20px; }
+  .mu-row.ok .verdict { background: var(--ok); color: var(--on-ok); } .mu-row.maybe .verdict { background: var(--maybe); color: var(--on-maybe); }
+
+  /* ---------- flash ---------- */
+  .flash { position: absolute; inset: 0; z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; background: var(--you); color: var(--on-you); }
+  .flash.on { display: flex; }
+  .flash .lbl { font-size: 15px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 20px; opacity: .8; }
+  .flash .word { font-size: clamp(32px, 9vw, 44px); font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; letter-spacing: -0.02em; }
+  .flash .word + .word { margin-top: 16px; }
+  .flash .timer { position: absolute; left: 0; right: 0; bottom: 0; height: 10px; background: rgba(0,0,0,.15); }
+  .flash .timer i { display: block; height: 100%; width: 60%; background: var(--on-you); }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="mock-nav" aria-label="Mockup navigator (not part of the app)">
+    <span>Mockup:</span>
+    <button data-go="setup" aria-pressed="true">Setup</button>
+    <button data-go="run">Running</button>
+    <button data-go="after">After</button>
+    <button data-go="flash">Flash</button>
+    <button class="theme" id="theme">Light</button>
+  </div>
+
+  <!-- ================= SETUP ================= -->
+  <section class="screen on" id="setup">
+    <div class="scroll">
+      <h1>Line Runner</h1>
+      <p class="sub">You are the Old Man. Pick a scene, hit Start, put the phone down.</p>
+
+      <div class="label">Scene</div>
+      <div class="big-pick" role="radiogroup" aria-label="Scene">
+        <button aria-pressed="false"><span class="radio" aria-hidden="true"></span><span class="t">Practice scene<small>6 lines</small></span></button>
+        <button aria-pressed="true"><span class="radio" aria-hidden="true"></span><span class="t">Act 1, Scene 1<small>14 lines, 6 yours</small></span></button>
+        <button aria-pressed="false"><span class="radio" aria-hidden="true"></span><span class="t">Act 1, Scene 2<small>22 lines, 9 yours</small></span></button>
+      </div>
+
+      <div class="label">Mode</div>
+      <div class="seg" role="group" aria-label="Mode">
+        <button aria-pressed="true">Run the scene<small>all lines</small></button>
+        <button aria-pressed="false">Made-up words<small>drill</small></button>
+      </div>
+
+      <div class="label">Settings</div>
+      <div class="row"><span class="lbl">Dialogue only<small>Skip the songs</small></span><span class="switch-wrap"><span class="state">On</span><button class="switch" role="switch" aria-checked="true"><span class="txt">Dialogue only</span></button></span></div>
+      <div class="row"><span class="lbl">Read before each of your lines</span><span class="chip" role="button" tabindex="0" aria-label="Read before each of your lines: 3, tap to change">3</span></div>
+      <div class="row" style="flex-wrap: wrap;"><span class="lbl">Wait before moving on<small>1.5 s of quiet</small></span><span class="chip" aria-hidden="true">1.5</span><input class="range" type="range" min="0.8" max="4" step="0.1" value="1.5" aria-label="Wait before moving on, seconds" style="flex-basis: 100%;"></div>
+      <div class="row"><span class="lbl">Voices<small>One per character</small></span><span class="chev" aria-hidden="true">&rsaquo;</span></div>
+      <div class="row"><span class="lbl">Continuous listening<small>If it keeps cutting you off</small></span><span class="switch-wrap"><span class="state">Off</span><button class="switch" role="switch" aria-checked="false"><span class="txt">Continuous listening</span></button></span></div>
+    </div>
+    <div class="foot"><button class="btn primary"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>Start</button></div>
+  </section>
+
+  <!-- ================= RUNNING ================= -->
+  <section class="screen" id="run">
+    <div class="band cue" id="band">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" id="bandIcon"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 010 6"/><path d="M18.5 6.5a8 8 0 010 11"/></svg>
+      <span class="word" id="bandWord">Mother<small>is speaking</small></span>
+      <span class="bars" aria-hidden="true" id="bars" style="display:none"><i></i><i></i><i></i><i></i><i></i></span>
+    </div>
+    <div class="state-toggle" aria-label="Mockup: switch running state">
+      <button data-state="cue" aria-pressed="true">Cue</button>
+      <button data-state="you" aria-pressed="false">Your line</button>
+      <button data-state="hold" aria-pressed="false">Paused</button>
+    </div>
+    <div class="dash">
+      <div class="prev dim" id="prev"><b>Old Man, before</b>Great inventions take time. Edison did not rush the light bulb.</div>
+      <div class="now">
+        <span class="who cue" id="nowWho">Mother</span>
+        <div class="text" id="nowText">Edison did not set the kitchen curtains on fire.</div>
+      </div>
+      <div class="next" id="next"><b>You, next</b>Blastified, snorkel-wumpin' curtains! That was one small spark.</div>
+    </div>
+    <div class="controls">
+      <button class="btn"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>Pause</button>
+      <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 12a8 8 0 1 1 2.3 5.7"/><path d="M4 18v-6h6"/></svg>Repeat cue</button>
+      <button class="btn primary line">Line <small>or just say it</small></button>
+    </div>
+  </section>
+
+  <!-- ================= AFTER ================= -->
+  <section class="screen" id="after">
+    <div class="scroll">
+      <h1>Scene done</h1>
+      <p class="sub">Act 1, Scene 1 &middot; 6 of your lines &middot; 4 min 12 s</p>
+      <div class="tally" aria-label="Totals">
+        <div class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12l5 5 9-10"/></svg><b>4</b><span>Matched</span></div>
+        <div class="maybe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 9a3 3 0 1 1 4 2.8c-.8.4-1 1-1 1.7"/><circle cx="12" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg><b>1</b><span>Check</span></div>
+        <div class="bad"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M6 6l12 12M18 6L6 18"/></svg><b>1</b><span>Needs work</span></div>
+      </div>
+
+      <div class="label">Your lines</div>
+      <div class="res other"><div class="body"><b>Mother</b>Dinner is on the table, and it is getting cold.</div></div>
+      <div class="res ok"><div class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12l5 5 9-10"/></svg>Matched</div><div class="body"><div class="line">Hold your horses. I am in the middle of a very delicate operation.</div></div></div>
+      <div class="res other"><div class="body"><b>Mother</b>You have been in the middle of it since Tuesday.</div></div>
+      <div class="res bad"><div class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M6 6l12 12M18 6L6 18"/></svg>Needs work</div><div class="body"><div class="line">Great inventions take time. Edison did not rush the light bulb.</div><span class="heard">Heard: <b>"Great inventions take time. Edison never hurried."</b><br>Missing: <span class="miss">did not rush the light bulb</span></span></div></div>
+      <div class="res other"><div class="body"><b>Mother</b>Edison did not set the kitchen curtains on fire.</div></div>
+      <div class="res maybe"><div class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 9a3 3 0 1 1 4 2.8c-.8.4-1 1-1 1.7"/><circle cx="12" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>Check</div><div class="body"><div class="line">Blastified, snorkel-wumpin' curtains! That was one small spark.</div><span class="heard">Heard: <b>"blast if I'd snorkel wumpin curtains that was one small spark"</b><br>Probably the phone mishearing you.</span></div></div>
+
+      <div class="label">Made-up words</div>
+      <div class="mu-list">
+        <div class="mu-row ok"><div class="cell"><small>Script</small><b>Blastified</b></div><div class="cell"><small>Phone heard</small><b>blast if I'd</b></div><div class="verdict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12l5 5 9-10"/></svg>Sounds close</div></div>
+        <div class="mu-row ok"><div class="cell"><small>Script</small><b>snorkel-wumpin'</b></div><div class="cell"><small>Phone heard</small><b>snorkel wumpin</b></div><div class="verdict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12l5 5 9-10"/></svg>Sounds close</div></div>
+        <div class="mu-row maybe"><div class="cell"><small>Script</small><b>fragglesnatch</b></div><div class="cell"><small>Phone heard</small><b>(nothing)</b></div><div class="verdict"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 9a3 3 0 1 1 4 2.8c-.8.4-1 1-1 1.7"/><circle cx="12" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>Check this one</div></div>
+      </div>
+      <p class="sub" style="margin-top:14px">The phone only knows if they sound close. You are the judge of exact.</p>
+    </div>
+    <div class="foot"><button class="btn">Run again</button><button class="btn primary">Copy report</button></div>
+  </section>
+
+  <!-- ================= FLASH ================= -->
+  <div class="flash" id="flash" role="dialog" aria-label="Made-up words">
+    <div class="lbl">Check yourself</div>
+    <div class="word">Blastified</div>
+    <div class="word">snorkel-wumpin'</div>
+    <div class="timer" aria-hidden="true"><i></i></div>
+  </div>
+</div>
+
+<script>
+  // Mockup-only toggles.
+  const root = document.documentElement;
+  const nav = document.querySelectorAll('.mock-nav [data-go]');
+  nav.forEach(b => b.addEventListener('click', () => {
+    nav.forEach(x => x.setAttribute('aria-pressed', x === b));
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+    document.getElementById('flash').classList.remove('on');
+    if (b.dataset.go === 'flash') { document.getElementById('run').classList.add('on'); document.getElementById('flash').classList.add('on'); }
+    else document.getElementById(b.dataset.go).classList.add('on');
+  }));
+  document.getElementById('flash').addEventListener('click', () => document.getElementById('flash').classList.remove('on'));
+  const themeBtn = document.getElementById('theme');
+  const setTheme = t => { root.dataset.theme = t; themeBtn.textContent = t === 'dark' ? 'Light' : 'Dark'; };
+  themeBtn.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+  if (matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+  document.querySelectorAll('.switch').forEach(s => s.addEventListener('click', () => { const on = s.getAttribute('aria-checked') !== 'true'; s.setAttribute('aria-checked', on); s.parentElement.querySelector('.state').textContent = on ? 'On' : 'Off'; }));
+  document.querySelectorAll('.seg, .big-pick').forEach(g => g.querySelectorAll('button').forEach(b => b.addEventListener('click', () => g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)))));
+  const ICON = {
+    cue: '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 010 6"/><path d="M18.5 6.5a8 8 0 010 11"/>',
+    you: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+    hold: '<rect x="6" y="5" width="4" height="14" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" fill="currentColor" stroke="none"/>'
+  };
+  document.querySelectorAll('.state-toggle button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.state-toggle button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    const st = b.dataset.state;
+    document.getElementById('band').className = 'band ' + st;
+    document.getElementById('bandIcon').innerHTML = ICON[st];
+    document.getElementById('bars').style.display = st === 'you' ? 'flex' : 'none';
+    document.getElementById('bandWord').innerHTML = st === 'you' ? 'Your line<small>Listening. Say "line" if stuck.</small>' : st === 'hold' ? 'Paused<small>Say "resume" or tap Pause</small>' : 'Mother<small>is speaking</small>';
+    const you = st !== 'cue';
+    document.getElementById('nowWho').className = 'who ' + (you ? 'you' : 'cue');
+    document.getElementById('nowWho').textContent = you ? 'Old Man, you' : 'Mother';
+    document.getElementById('nowText').innerHTML = you ? '<span class="mu">Blastified</span>, <span class="mu">snorkel-wumpin\'</span> curtains! That was one small spark.' : 'Edison did not set the kitchen curtains on fire.';
+    document.getElementById('prev').innerHTML = you ? '<b>Mother, before</b>Edison did not set the kitchen curtains on fire.' : '<b>Old Man, before</b>Great inventions take time. Edison did not rush the light bulb.';
+    document.getElementById('next').innerHTML = you ? '<b>Mother, next</b>Wash your hands. And do not stop at the door to admire your work.' : '<b>You, next</b>Blastified, snorkel-wumpin\' curtains! That was one small spark.';
+  }));
+</script>
+</body>
+</html>

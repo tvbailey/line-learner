@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Line Runner - Backstage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,800;1,600&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  /* ---------- tokens: dark is the designed default (rehearsal room, car at night) ---------- */
+  :root {
+    --bg: #15120f;        /* warm near-black, not #000 */
+    --surface: #211c17;   /* one layer up */
+    --surface2: #2b251e;  /* two layers up */
+    --ink: #f3e9d8;
+    --muted: #b3a48e;
+    --line: #3a3128;
+    --amber: #f0b64a;     /* the ghost light: "your turn" and primary action only */
+    --on-amber: #1a1206;
+    --spot: rgba(240,182,74,0.16);
+    --ok: #8fd6a4;  --ok-bg: rgba(143,214,164,0.14);
+    --maybe: #ffc06b; --maybe-bg: rgba(255,192,107,0.14);
+    --bad: #ff9a8f;  --bad-bg: rgba(255,154,143,0.14);
+    --cue: #9fc3e8;  /* the other actor speaking: cool, calm */
+  }
+  :root[data-theme="light"] {
+    --bg: #efe6d4;        /* script paper */
+    --surface: #fbf6ea;
+    --surface2: #f2e9d6;
+    --ink: #221b14;
+    --muted: #6a5d4c;
+    --line: #d5c7ad;
+    --amber: #8a5a00;
+    --on-amber: #fff8e8;
+    --spot: rgba(138,90,0,0.10);
+    --ok: #1d6b36;  --ok-bg: rgba(29,107,54,0.10);
+    --maybe: #8a4b00; --maybe-bg: rgba(138,75,0,0.10);
+    --bad: #a8281e;  --bad-bg: rgba(168,40,30,0.10);
+    --cue: #2c5a8a;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #0a0908; color: var(--ink);
+    font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  :root[data-theme="light"] body { background: #cdbf9f; }
+  .display { font-family: "Playfair Display", Georgia, serif; }
+  .script-face { font-family: "Courier Prime", "Courier New", monospace; }
+
+  /* ---------- phone frame: full-bleed on a phone, framed on a laptop ---------- */
+  .phone {
+    position: relative; margin: 0 auto; background: var(--bg);
+    width: 100%; max-width: 412px; height: 100dvh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  @media (min-width: 480px) {
+    .phone { height: 860px; margin: 24px auto; border-radius: 28px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  }
+
+  /* ---------- mockup-only navigator ---------- */
+  .mock-nav {
+    display: flex; gap: 4px; padding: 6px 8px; background: #000; color: #ddd; font-size: 12px; align-items: center;
+    border-bottom: 1px dashed #444; flex: none;
+  }
+  .mock-nav span { opacity: .6; margin-right: 4px; }
+  .mock-nav button { font: inherit; background: #222; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 6px 8px; min-height: 32px; }
+  .mock-nav button[aria-pressed="true"] { background: #f0b64a; color: #000; border-color: #f0b64a; }
+  .mock-nav .theme { margin-left: auto; }
+
+  .screen { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .screen.on { display: flex; }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 24px; }
+
+  /* ---------- shared UI ---------- */
+  h1 { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 800; letter-spacing: -0.01em; }
+  .eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--amber); font-weight: 700; }
+  .sub { color: var(--muted); margin: 6px 0 0; font-size: 15px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 56px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row .lbl { flex: 1; }
+  .row .lbl small { display: block; color: var(--muted); font-size: 13px; }
+  .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .stepper button { width: 48px; height: 48px; border: 0; background: var(--surface2); color: var(--ink); font: 700 22px/1 inherit; }
+  .stepper output { width: 44px; text-align: center; font-weight: 700; font-size: 20px; }
+  .switch { position: relative; width: 56px; height: 32px; border-radius: 16px; background: var(--line); border: 0; flex: none; padding: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); transition: left .15s; }
+  .switch[aria-checked="true"] { background: var(--amber); }
+  .switch[aria-checked="true"]::after { left: 27px; background: var(--on-amber); }
+  .switch-hit { display: inline-flex; align-items: center; min-height: 48px; padding: 0 0 0 8px; }
+  .chev { color: var(--muted); font-size: 22px; }
+  .btn { font: inherit; font-weight: 700; min-height: 52px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface2); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn.primary { background: var(--amber); color: var(--on-amber); border-color: var(--amber); font-size: 19px; }
+  .btn:focus-visible, .switch:focus-visible, .seg button:focus-visible, .stepper button:focus-visible { outline: 3px solid var(--cue); outline-offset: 2px; }
+  .seg { display: flex; background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }
+  .seg button { flex: 1; min-height: 48px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: 700 15px/1.2 inherit; padding: 6px 8px; }
+  .seg button[aria-pressed="true"] { background: var(--amber); color: var(--on-amber); }
+  .seg button small { display: block; font-weight: 400; font-size: 12px; opacity: .85; }
+  .range { -webkit-appearance: none; width: 100%; height: 48px; background: transparent; }
+  .range::-webkit-slider-runnable-track { height: 6px; background: var(--line); border-radius: 3px; }
+  .range::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -11px; border-radius: 50%; background: var(--amber); border: 3px solid var(--bg); }
+  .foot { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); display: flex; gap: 10px; }
+  .foot .btn { flex: 1; }
+
+  /* ---------- setup: the call board ---------- */
+  .marquee { padding: 20px 16px 14px; border-bottom: 1px solid var(--line); background: radial-gradient(120% 100% at 50% 0%, var(--spot), transparent 70%); }
+  .scenes { display: grid; gap: 8px; margin-top: 10px; }
+  .scene { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 56px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: inherit; text-align: left; width: 100%; }
+  .scene .num { font-family: "Playfair Display", serif; font-size: 22px; font-weight: 800; width: 34px; color: var(--muted); }
+  .scene .t { flex: 1; font-weight: 700; }
+  .scene .t small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+  .scene[aria-pressed="true"] { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+  .scene[aria-pressed="true"] .num { color: var(--amber); }
+  .scene .tick { width: 24px; height: 24px; color: var(--amber); visibility: hidden; }
+  .scene[aria-pressed="true"] .tick { visibility: visible; }
+  .section { margin: 18px 0 8px; }
+
+  /* ---------- running: spotlight ---------- */
+  .status { flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 64px; border-bottom: 1px solid var(--line); }
+  .status .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  .status .what { font-weight: 800; font-size: 20px; line-height: 1.15; }
+  .status .what small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .status.cue { background: color-mix(in srgb, var(--cue) 14%, var(--surface)); }
+  .status.cue .dot { background: var(--cue); }
+  .status.you { background: var(--spot); }
+  .status.you .dot { background: var(--amber); box-shadow: 0 0 0 0 var(--amber); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(240,182,74,.6);} 100% { box-shadow: 0 0 0 14px rgba(240,182,74,0);} }
+  @media (prefers-reduced-motion: reduce) { .status.you .dot { animation: none; } .switch::after { transition: none; } }
+  .status svg { width: 26px; height: 26px; flex: none; }
+
+  .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  .stage .scroll { padding: 8px 16px 220px; }
+  .ln { padding: 10px 12px; border-radius: 10px; margin: 2px 0; font-size: 16px; line-height: 1.45; opacity: .55; }
+  .ln .who { display: block; font-family: "Playfair Display", serif; font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  .ln.mine .who { color: var(--amber); }
+  .ln.done { opacity: .35; }
+  .ln.next { opacity: .8; }
+  .now-wrap { position: absolute; left: 0; right: 0; top: 34%; padding: 0 12px; pointer-events: none; }
+  .now { pointer-events: auto; background: var(--surface2); border: 2px solid var(--amber); border-radius: 16px; padding: 14px 16px 16px;
+         box-shadow: 0 0 0 10px var(--spot), 0 20px 50px rgba(0,0,0,.45); }
+  .now.cue { border-color: var(--cue); box-shadow: 0 0 0 10px color-mix(in srgb, var(--cue) 14%, transparent), 0 20px 50px rgba(0,0,0,.45); }
+  .now .who { display: block; font-family: "Playfair Display", serif; font-weight: 700; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--amber); margin-bottom: 6px; }
+  .now.cue .who { color: var(--cue); }
+  .now .text { font-size: 22px; line-height: 1.35; font-weight: 700; }
+  .now .text .mu { text-decoration: underline; text-decoration-color: var(--amber); text-underline-offset: 4px; }
+  .now .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .fade-top, .fade-bot { position: absolute; left: 0; right: 0; height: 90px; pointer-events: none; }
+  .fade-top { top: 0; background: linear-gradient(var(--bg), transparent); }
+  .fade-bot { bottom: 0; background: linear-gradient(transparent, var(--bg)); }
+  .state-toggle { position: absolute; right: 12px; bottom: 10px; display: flex; gap: 4px; background: #000c; padding: 4px; border-radius: 8px; font-size: 11px; }
+  .state-toggle button { font: inherit; min-height: 32px; border: 1px solid #555; background: #222; color: #eee; border-radius: 6px; padding: 0 8px; }
+  .state-toggle button[aria-pressed="true"] { background: #f0b64a; color: #000; }
+  .controls { flex: none; display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
+  .controls .btn { min-height: 60px; font-size: 17px; }
+  .controls .btn svg { width: 22px; height: 22px; }
+
+  /* ---------- after: the notes ---------- */
+  .tally { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+  .tally div { border-radius: 12px; padding: 10px 8px; text-align: center; border: 1px solid var(--line); }
+  .tally b { display: block; font-size: 26px; line-height: 1; font-family: "Playfair Display", serif; }
+  .tally span { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .tally .ok { color: var(--ok); background: var(--ok-bg); } .tally .maybe { color: var(--maybe); background: var(--maybe-bg); } .tally .bad { color: var(--bad); background: var(--bad-bg); }
+  .res { border-left: 5px solid var(--line); padding: 10px 12px 10px 14px; margin: 8px 0; border-radius: 0 12px 12px 0; background: var(--surface); }
+  .res.other { opacity: .6; border-left-color: transparent; background: transparent; padding-top: 4px; padding-bottom: 4px; }
+  .res.ok { border-left-color: var(--ok); } .res.maybe { border-left-color: var(--maybe); } .res.bad { border-left-color: var(--bad); }
+  .res .who { display: block; font-family: "Playfair Display", serif; font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .res .line { font-size: 16px; }
+  .mark { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; margin-top: 6px; padding: 3px 9px 3px 6px; border-radius: 999px; }
+  .res > .mark { display: flex; width: max-content; }
+  .mark svg { width: 16px; height: 16px; }
+  .res.ok .mark { color: var(--ok); background: var(--ok-bg); } .res.maybe .mark { color: var(--maybe); background: var(--maybe-bg); } .res.bad .mark { color: var(--bad); background: var(--bad-bg); }
+  .heard { display: block; margin-top: 4px; font-size: 14px; color: var(--muted); }
+  .heard b { color: var(--ink); font-weight: 400; }
+  .heard .miss { color: var(--bad); text-decoration: line-through; }
+  table.mu { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 15px; }
+  table.mu th { text-align: left; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  table.mu td { padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.mu td:first-child { font-family: "Courier Prime", monospace; font-weight: 700; }
+  table.mu .mark { margin: 0; }
+  .ok .mark, td .mark.ok { color: var(--ok); background: var(--ok-bg); } td .mark.maybe { color: var(--maybe); background: var(--maybe-bg); }
+
+  /* ---------- the big flash ---------- */
+  .flash { position: absolute; inset: 0; z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px;
+           background: radial-gradient(80% 60% at 50% 45%, var(--spot), transparent 75%), var(--bg); }
+  .flash.on { display: flex; }
+  .flash .eyebrow { margin-bottom: 18px; }
+  .flash .word { font-family: "Courier Prime", monospace; font-weight: 700; font-size: clamp(30px, 9.2vw, 40px); line-height: 1.15; color: var(--amber); overflow-wrap: anywhere; }
+  .flash .word + .word { margin-top: 18px; }
+  .flash .timer { position: absolute; left: 24px; right: 24px; bottom: 32px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .flash .timer i { display: block; height: 100%; width: 60%; background: var(--amber); }
+  .flash .tap { position: absolute; bottom: 48px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="mock-nav" aria-label="Mockup navigator (not part of the app)">
+    <span>Mockup:</span>
+    <button data-go="setup" aria-pressed="true">Setup</button>
+    <button data-go="run">Running</button>
+    <button data-go="after">After</button>
+    <button data-go="flash">Flash</button>
+    <button class="theme" id="theme">Light</button>
+  </div>
+
+  <!-- ================= SCREEN 1: SETUP ================= -->
+  <section class="screen on" id="setup">
+    <div class="marquee">
+      <div class="eyebrow">Call board</div>
+      <h1 class="display">Line Runner</h1>
+      <p class="sub">You are <b>THE OLD MAN</b>. The phone plays everyone else.</p>
+    </div>
+    <div class="scroll">
+      <div class="eyebrow section">Tonight's scene</div>
+      <div class="scenes" role="radiogroup" aria-label="Scene">
+        <button class="scene" aria-pressed="false"><span class="num">P</span><span class="t">Practice scene<small>6 lines, 3 yours</small></span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg></button>
+        <button class="scene" aria-pressed="true"><span class="num">1.1</span><span class="t">Act 1, Scene 1<small>The kitchen. 14 lines, 6 yours</small></span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg></button>
+        <button class="scene" aria-pressed="false"><span class="num">1.2</span><span class="t">Act 1, Scene 2<small>The basement. 22 lines, 9 yours</small></span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg></button>
+      </div>
+
+      <div class="eyebrow section">Mode</div>
+      <div class="seg" role="group" aria-label="Mode">
+        <button aria-pressed="true">Run the scene<small>every line, in order</small></button>
+        <button aria-pressed="false">Made-up words drill<small>only the cursing lines</small></button>
+      </div>
+
+      <div class="eyebrow section">Before you start</div>
+      <div class="card">
+        <div class="row"><span class="lbl">Dialogue only<small>Skip the songs</small></span><span class="switch-hit"><button class="switch" role="switch" aria-checked="true" aria-label="Dialogue only"></button></span></div>
+        <div class="row"><span class="lbl">Read before each of your lines<small>How many cue lines you hear</small></span><span class="stepper"><button aria-label="Fewer">-</button><output>3</output><button aria-label="More">+</button></span></div>
+        <div class="row" style="flex-wrap: wrap;"><span class="lbl">Wait before moving on<small>1.5 seconds of quiet ends your line</small></span><input class="range" type="range" min="0.8" max="4" step="0.1" value="1.5" aria-label="Wait before moving on, seconds" style="flex-basis: 100%;"></div>
+        <div class="row"><span class="lbl">Voices<small>Mother: Aria. Ralphie: Emma, pitched up</small></span><span class="chev" aria-hidden="true">&rsaquo;</span></div>
+        <div class="row"><span class="lbl">Continuous listening<small>Off. Turn on if it keeps cutting you off</small></span><span class="switch-hit"><button class="switch" role="switch" aria-checked="false" aria-label="Continuous listening"></button></span></div>
+      </div>
+    </div>
+    <div class="foot"><button class="btn primary">Places, please &mdash; Start</button></div>
+  </section>
+
+  <!-- ================= SCREEN 2: RUNNING ================= -->
+  <section class="screen" id="run">
+    <div class="status cue" id="statusBar">
+      <span class="dot" aria-hidden="true"></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" id="statusIcon"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 010 6"/><path d="M18.5 6.5a8 8 0 010 11"/></svg>
+      <span class="what" id="statusText">Mother is speaking<small>Act 1, Scene 1 &middot; line 5 of 14</small></span>
+    </div>
+    <div class="stage">
+      <div class="scroll">
+        <div class="ln done"><span class="who">Mother</span>Dinner is on the table, and it is getting cold.</div>
+        <div class="ln done mine"><span class="who">Old Man</span>Hold your horses. I am in the middle of a very delicate operation.</div>
+        <div class="ln done"><span class="who">Mother</span>You have been in the middle of it since Tuesday.</div>
+        <div class="ln done mine"><span class="who">Old Man</span>Great inventions take time. Edison did not rush the light bulb.</div>
+        <div class="ln" style="visibility:hidden; height: 150px;"></div>
+        <div class="ln next mine"><span class="who">Old Man</span>Blastified, snorkel-wumpin' curtains! That was one small spark.</div>
+        <div class="ln"><span class="who">Mother</span>Wash your hands. And do not stop at the door to admire your work.</div>
+        <div class="ln mine"><span class="who">Old Man</span>I never pause. I am a man of action.</div>
+        <div class="ln"><span class="who">Mother</span>Very nice, dear. Now wash your hands.</div>
+      </div>
+      <div class="fade-top" aria-hidden="true"></div>
+      <div class="fade-bot" aria-hidden="true"></div>
+      <div class="now-wrap">
+        <div class="now cue" id="now">
+          <span class="who" id="nowWho">Mother</span>
+          <div class="text" id="nowText">Edison did not set the kitchen curtains on fire.</div>
+          <div class="hint" id="nowHint">Your line is next.</div>
+        </div>
+      </div>
+      <div class="state-toggle" aria-label="Mockup: switch running state">
+        <button data-state="cue" aria-pressed="true">Cue</button>
+        <button data-state="you" aria-pressed="false">Your line</button>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>Pause</button>
+      <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 12a8 8 0 1 1 2.3 5.7"/><path d="M4 18v-6h6"/></svg>Repeat</button>
+      <button class="btn primary">Line</button>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 3: AFTER ================= -->
+  <section class="screen" id="after">
+    <div class="marquee">
+      <div class="eyebrow">Notes from the booth</div>
+      <h1 class="display">Scene done</h1>
+      <p class="sub">Act 1, Scene 1 &middot; 6 of your lines &middot; 4 min 12 s</p>
+    </div>
+    <div class="scroll">
+      <div class="tally" aria-label="Totals">
+        <div class="ok"><b>4</b><span>Matched</span></div>
+        <div class="maybe"><b>1</b><span>Check</span></div>
+        <div class="bad"><b>1</b><span>Needs work</span></div>
+      </div>
+
+      <div class="res other"><span class="who">Mother</span><span class="line">Dinner is on the table, and it is getting cold.</span></div>
+      <div class="res ok"><span class="who">Old Man</span><span class="line">Hold your horses. I am in the middle of a very delicate operation.</span>
+        <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>Matched</span></div>
+      <div class="res other"><span class="who">Mother</span><span class="line">You have been in the middle of it since Tuesday.</span></div>
+      <div class="res bad"><span class="who">Old Man</span><span class="line">Great inventions take time. Edison did not rush the light bulb.</span>
+        <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 6l12 12M18 6L6 18"/></svg>Needs work</span>
+        <span class="heard">Heard: <b>"Great inventions take time. Edison never hurried."</b> Missing: <span class="miss">did not rush the light bulb</span></span></div>
+      <div class="res other"><span class="who">Mother</span><span class="line">Edison did not set the kitchen curtains on fire.</span></div>
+      <div class="res maybe"><span class="who">Old Man</span><span class="line">Blastified, snorkel-wumpin' curtains! That was one small spark.</span>
+        <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 9a3 3 0 1 1 4 2.8c-.8.4-1 1-1 1.7"/><circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>Check</span>
+        <span class="heard">Heard: <b>"blast if I'd snorkel wumpin curtains that was one small spark"</b> &middot; probably the phone mishearing you</span></div>
+
+      <div class="eyebrow section">Made-up words: script vs. what the phone heard</div>
+      <div class="card" style="padding: 4px 8px 8px;">
+        <table class="mu">
+          <thead><tr><th>Script</th><th>Phone heard</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Blastified</td><td>blast if I'd</td><td><span class="mark ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>Close</span></td></tr>
+            <tr><td>snorkel-wumpin'</td><td>snorkel wumpin</td><td><span class="mark ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>Close</span></td></tr>
+            <tr><td>fragglesnatch</td><td>(nothing)</td><td><span class="mark maybe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9 9a3 3 0 1 1 4 2.8c-.8.4-1 1-1 1.7"/><circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>Check</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="sub" style="margin-top:12px">The phone only knows if they sound close. You are the judge of exact.</p>
+    </div>
+    <div class="foot"><button class="btn">Run it again</button><button class="btn primary">Copy report</button></div>
+  </section>
+
+  <!-- ================= THE FLASH (drill) ================= -->
+  <div class="flash" id="flash" role="dialog" aria-label="Made-up words">
+    <div class="eyebrow">Check yourself</div>
+    <div class="word">Blastified</div>
+    <div class="word">snorkel-wumpin'</div>
+    <div class="tap">Fades in 3.5 seconds</div>
+    <div class="timer" aria-hidden="true"><i></i></div>
+  </div>
+</div>
+
+<script>
+  // Mockup-only toggles. Nothing here is app logic.
+  const root = document.documentElement;
+  const nav = document.querySelectorAll('.mock-nav [data-go]');
+  nav.forEach(b => b.addEventListener('click', () => {
+    nav.forEach(x => x.setAttribute('aria-pressed', x === b));
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+    document.getElementById('flash').classList.remove('on');
+    if (b.dataset.go === 'flash') { document.getElementById('run').classList.add('on'); document.getElementById('flash').classList.add('on'); }
+    else document.getElementById(b.dataset.go).classList.add('on');
+  }));
+  document.getElementById('flash').addEventListener('click', () => document.getElementById('flash').classList.remove('on'));
+  const themeBtn = document.getElementById('theme');
+  const setTheme = t => { root.dataset.theme = t; themeBtn.textContent = t === 'dark' ? 'Light' : 'Dark'; };
+  themeBtn.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+  if (matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+  document.querySelectorAll('.switch').forEach(s => s.addEventListener('click', () => s.setAttribute('aria-checked', s.getAttribute('aria-checked') !== 'true')));
+  document.querySelectorAll('.seg, .scenes').forEach(g => g.querySelectorAll('button').forEach(b => b.addEventListener('click', () => g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)))));
+  document.querySelectorAll('.state-toggle button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.state-toggle button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    const you = b.dataset.state === 'you';
+    const bar = document.getElementById('statusBar'), now = document.getElementById('now');
+    bar.className = 'status ' + (you ? 'you' : 'cue'); now.className = 'now ' + (you ? '' : 'cue');
+    document.getElementById('statusText').innerHTML = you ? 'Your line. Listening...<small>Say "line" if you are stuck</small>' : 'Mother is speaking<small>Act 1, Scene 1 &middot; line 5 of 14</small>';
+    document.getElementById('statusIcon').innerHTML = you ? '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>' : '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 010 6"/><path d="M18.5 6.5a8 8 0 010 11"/>';
+    document.getElementById('nowWho').textContent = you ? 'Old Man - you' : 'Mother';
+    document.getElementById('nowText').innerHTML = you ? '<span class="mu">Blastified</span>, <span class="mu">snorkel-wumpin\'</span> curtains! That was one small spark.' : 'Edison did not set the kitchen curtains on fire.';
+    document.getElementById('nowHint').textContent = you ? 'Underlined words are the made-up ones.' : 'Your line is next.';
+  }));
+</script>
+</body>
+</html>
