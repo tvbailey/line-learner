@@ -1,8 +1,8 @@
-// Line Learner voice test: browser glue around core.js.
+// Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929e';
-import { parseScript } from './script.js?v=20260929e';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20260929e';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260929f';
+import { parseScript } from './script.js?v=20260929f';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20260929f';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -392,7 +392,7 @@ window.addEventListener('online', () => log('network: online'));
 // ---------- report ----------
 async function copyReport() {
   const report = [
-    'Line Learner voice test report',
+    'Line Runner report',
     `when: ${new Date().toString()}`,
     `browser: ${navigator.userAgent}`,
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,

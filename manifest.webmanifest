@@ -1,6 +1,6 @@
 {
-  "name": "Line Learner",
-  "short_name": "Lines",
+  "name": "Line Runner",
+  "short_name": "Line Runner",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#1d2433",

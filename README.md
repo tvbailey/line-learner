@@ -1,4 +1,4 @@
-# Line Learner
+# Line Runner
 
 A phone scene partner for learning lines: it reads the other parts
 aloud, listens for yours, prompts when you say "line", and quietly notes
