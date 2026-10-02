@@ -107,7 +107,7 @@ function alignLine(parts, b) {
     else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
     else j++;
   }
-  const missing = a.filter((_, i) => matchedJ[i] < 0);
+  const absorbed = new Set();
   const madeUp = [];
   let realBefore = 0;
   for (const p of parts) {
@@ -119,8 +119,18 @@ function alignLine(parts, b) {
     const words = [];
     for (let j = left + 1; j < right; j++) if (!usedJ.has(j)) { words.push(b[j]); usedJ.add(j); }
     const heardText = words.join(' ');
+    // A real word beside the made-up one that the phone ran into it ("racklin' ash" heard as
+    // "recognize"): count it as said when the heard words sound closer with it than without it.
+    for (const i of [realBefore - 1, realBefore]) {
+      if (i < 0 || i >= a.length || matchedJ[i] >= 0 || !heardText) continue;
+      const withWord = i < realBefore ? `${a[i]} ${p.written}` : `${p.written} ${a[i]}`;
+      if (similarity(soundKey(withWord), soundKey(heardText)) > similarity(soundKey(p.written), soundKey(heardText))) absorbed.add(i);
+    }
     madeUp.push({ written: p.written, heard: heardText, close: heardText !== '' && soundKeysClose(p.written, heardText) });
   }
+  // If a made-up word got no heard words at all, an earlier one swallowed too much; absorb nothing.
+  if (madeUp.some((m) => !m.heard)) absorbed.clear();
+  const missing = a.filter((_, i) => matchedJ[i] < 0 && !absorbed.has(i));
   const extra = b.filter((_, j) => !usedJ.has(j));
   const checkMadeUp = madeUp.some((m) => !m.close);
   return { match: missing.length === 0 && extra.length === 0 && !checkMadeUp, missing, extra, madeUp, checkMadeUp };

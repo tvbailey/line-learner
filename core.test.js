@@ -65,6 +65,23 @@ test('a phrase the phone heard twice across a restart still matches the line', (
   assert.equal(compareLine('How did you know that?', heard).match, true);
 });
 
+test('a real word the phone ran into a neighboring made-up word still counts', () => {
+  // Phone report 1 Oct 2026: "racklin' ash" heard as "recognize", so "ash" was marked missing.
+  const r = compareLine("{Consarned}, {goobly-degooking}, {racklin'} ash!", 'concerned gobbledy cooking recognize');
+  assert.deepEqual(r.missing, []);
+  assert.equal(r.match, true);
+});
+
+test('a real word skipped after a made-up word is still caught as missing', () => {
+  const r = compareLine("{Consarned}, {goobly-degooking}, {racklin'} ash!", 'concerned gobbledy cooking racklin');
+  assert.deepEqual(r.missing, ['ash']);
+});
+
+test('a real word skipped between two made-up words is still caught as missing', () => {
+  const r = compareLine("{Farfangled} britches {cobbler-goblin'}", 'farfangled cobbler goblin');
+  assert.deepEqual(r.missing, ['britches']);
+});
+
 test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
   // Phone report 1 Oct 2026: the line was ended during the phone's own listening restart, cutting him off.
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 3200, gapMs: 2000 }), false);
