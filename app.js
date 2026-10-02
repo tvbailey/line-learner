@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20260930a';
-import { parseScript } from './script.js?v=20260930a';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20260930a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261001a';
+import { parseScript } from './script.js?v=20261001a';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20261001a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -161,7 +161,7 @@ function highlight(i) {
   if (steps[i]) showOnStage(steps[i], steps[i + 1]);
 }
 
-function showHeard(i, heard, result, prompted) {
+function showHeard(i, heard, result, prompted, phoneRestarts = 0) {
   const el = $('ln' + i);
   const ok = result.match && !prompted;
   let kind = ok ? 'ok' : 'bad';
@@ -170,6 +170,8 @@ function showHeard(i, heard, result, prompted) {
   if (result.restarted) note += ' (you restarted, then got it)';
   if (result.missing.length || result.extra.length) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
   if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; kind = 'check'; }
+  // The phone stopped listening partway through: missing or doubled words may be the phone's, not his.
+  if (!result.match && phoneRestarts && !prompted) { note += ` | the phone stopped listening ${phoneRestarts === 1 ? 'once' : phoneRestarts + ' times'} during this line, so some words may not have reached it`; kind = 'check'; }
   if (result.checkMadeUp && !prompted && !result.missing.length && !result.extra.length) kind = 'check';
   const mark = badge(kind);
   mark.classList.add('result');
@@ -270,7 +272,11 @@ function dedupe(results) {
 function heardText() { return assembleTranscript(earlierSessions, currentResults); }
 // Last time the microphone picked up any sound at all, words or not (for lines like "Argh!").
 let lastSoundAt = 0;
-function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; }
+// When the phone last (re)started listening: it hears nothing while restarting, so quiet then isn't him finishing.
+let listeningSince = 0;
+// Restarts after he had started the line: words said during one can be lost or heard twice.
+let midLineRestarts = 0;
+function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; listeningSince = 0; midLineRestarts = 0; }
 
 function startListening() {
   wantListening = true;
@@ -285,6 +291,7 @@ function startListening() {
     currentResults = dedupe(Array.from(e.results).map((r) => ({ final: r.isFinal, text: r[0].transcript })));
     lastSpeechAt = Date.now();
   };
+  rec.onaudiostart = () => { listeningSince = Date.now(); };
   rec.onsoundstart = () => { lastSoundAt = Date.now(); };
   rec.onsoundend = () => { lastSoundAt = Date.now(); };
   rec.onerror = (e) => {
@@ -300,6 +307,8 @@ function startListening() {
     currentResults = [];
     if (wantListening && !micBlocked) {
       restarts++;
+      if (earlierSessions.length) midLineRestarts++;
+      listeningSince = Date.now();
       log(`listening stopped by the phone; restarting (#${restarts})`);
       // Restart at once: words spoken while the phone isn't listening are lost.
       if (wantListening) startListening();
@@ -332,6 +341,8 @@ function awaitMyLine(expected, soundOnly = false) {
   return new Promise((resolve) => {
     let promptLevel = 0;
     let busy = false;
+    let phoneRestarts = 0;
+    const expectedWords = expected.split(/\s+/).filter(Boolean).length;
     resetHeard();
     startListening();
     setStatus('Your line. Listening...', 'listening');
@@ -344,8 +355,10 @@ function awaitMyLine(expected, soundOnly = false) {
         // A sound-only line ("Argh!") may produce no words at all; any sound counts.
         const heardSomething = utterance.length > 0 || (soundOnly && lastSoundAt > 0);
         const lastHeard = soundOnly ? Math.max(lastSpeechAt, lastSoundAt) : lastSpeechAt;
-        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs() })) return;
+        const heardWords = utterance.split(/\s+/).filter(Boolean).length;
+        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs(), listeningSince, heardWords, expectedWords: soundOnly ? 0 : expectedWords })) return;
         cmd = detectCommand(utterance);
+        phoneRestarts = midLineRestarts;
         resetHeard();
       }
       busy = true;
@@ -365,7 +378,7 @@ function awaitMyLine(expected, soundOnly = false) {
       }
       clearInterval(tick);
       stopListening();
-      resolve({ heard: utterance, prompted: promptLevel > 0 });
+      resolve({ heard: utterance, prompted: promptLevel > 0, phoneRestarts });
     }, 150);
   });
 }
@@ -428,11 +441,11 @@ async function runScene() {
     }
     const expected = stripDirections(item.text);
     const soundOnly = isSoundOnly(expected);
-    const { heard, prompted } = await awaitMyLine(expected, soundOnly);
+    const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly);
     const result = soundOnly ? { match: true, missing: [], extra: [], likelyMishearing: false } : compareLine(expected, heard);
-    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
+    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''}${phoneRestarts ? `, phone stopped listening ${phoneRestarts}x mid-line` : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
     if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
-    showHeard(i, heard, result, prompted);
+    showHeard(i, heard, result, prompted, phoneRestarts);
     if (result.madeUp && result.madeUp.length) {
       madeUpSeen.push(...result.madeUp);
       // In the drill, flash the made-up words big right after he says them, to check himself.

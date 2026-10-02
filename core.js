@@ -203,6 +203,8 @@ export function promptText(line, level) {
 
 // Speech recognition restarts mid-line; join what earlier sessions heard with the current results.
 export function assembleTranscript(earlierSessions, currentResults) {
+  // Not de-duplicated: a restart can make the phone hear a phrase twice, but he can also really say
+  // one twice ("You'll see - you'll see!"); compareLine forgives the repeat either way.
   return [...earlierSessions, ...currentResults.map((r) => r.text)]
     .map((s) => s.trim())
     .filter(Boolean)
@@ -210,8 +212,13 @@ export function assembleTranscript(earlierSessions, currentResults) {
 }
 
 // The line is finished once he has said something and then been quiet for the gap.
-export function isLineFinished({ heardSomething, lastSpeechAt, now, gapMs }) {
-  return heardSomething && now - lastSpeechAt >= gapMs;
+// Quiet counts from when the phone last resumed listening (it can't hear him while restarting),
+// though never more than one extra gap. If far less than the line has been heard, wait twice as long.
+export function isLineFinished({ heardSomething, lastSpeechAt, now, gapMs, listeningSince = 0, heardWords = 0, expectedWords = 0 }) {
+  if (!heardSomething) return false;
+  const quietFrom = Math.max(lastSpeechAt, Math.min(listeningSince, lastSpeechAt + gapMs));
+  const shortOfLine = expectedWords >= 6 && heardWords < expectedWords / 2;
+  return now - quietFrom >= (shortOfLine ? 2 * gapMs : gapMs);
 }
 
 // Stage directions in parentheses are shown on screen but never spoken or checked.

@@ -55,6 +55,34 @@ test('assembleTranscript joins earlier sessions with the current results', () =>
   assert.equal(assembleTranscript(['it is'], current), 'it is a major award');
 });
 
+test('assembleTranscript keeps a phrase really said twice across a restart', () => {
+  assert.equal(assembleTranscript(["silly you'll see"], [{ final: true, text: "you'll see I'll have you know" }]), "silly you'll see you'll see I'll have you know");
+});
+
+test('a phrase the phone heard twice across a restart still matches the line', () => {
+  // Phone report 1 Oct 2026: a restart re-heard the start of the line; the line must still pass.
+  const heard = assembleTranscript(['how did you note that'], [{ final: true, text: 'how did you know that' }]);
+  assert.equal(compareLine('How did you know that?', heard).match, true);
+});
+
+test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
+  // Phone report 1 Oct 2026: the line was ended during the phone's own listening restart, cutting him off.
+  assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 3200, gapMs: 2000 }), false);
+  assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 4600, gapMs: 2000 }), true);
+});
+
+test('isLineFinished does not let back-to-back restarts hold the line open forever', () => {
+  assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 30000, now: 5100, gapMs: 2000 }), true);
+});
+
+test('isLineFinished waits twice as long when much less than the line has been heard', () => {
+  const base = { heardSomething: true, lastSpeechAt: 1000, now: 3500, gapMs: 2000 };
+  assert.equal(isLineFinished({ ...base, heardWords: 11, expectedWords: 37 }), false);
+  assert.equal(isLineFinished({ ...base, now: 5100, heardWords: 11, expectedWords: 37 }), true);
+  assert.equal(isLineFinished({ ...base, heardWords: 30, expectedWords: 37 }), true);
+  assert.equal(isLineFinished({ ...base, heardWords: 1, expectedWords: 3 }), true);
+});
+
 test('isLineFinished waits for the gap after speech, never before any speech', () => {
   assert.equal(isLineFinished({ heardSomething: false, lastSpeechAt: 0, now: 99999, gapMs: 1500 }), false);
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, now: 2000, gapMs: 1500 }), false);
