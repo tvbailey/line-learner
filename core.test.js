@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, voiceFor } from './core.js';
+import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, voiceFor } from './core.js';
 
 test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
@@ -97,12 +97,27 @@ test('isLineFinished does not let back-to-back restarts hold the line open forev
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 30000, now: 5100, gapMs: 2000 }), true);
 });
 
-test('isLineFinished waits twice as long when much less than the line has been heard', () => {
-  const base = { heardSomething: true, lastSpeechAt: 1000, now: 3500, gapMs: 2000 };
-  assert.equal(isLineFinished({ ...base, heardWords: 11, expectedWords: 37 }), false);
-  assert.equal(isLineFinished({ ...base, now: 5100, heardWords: 11, expectedWords: 37 }), true);
-  assert.equal(isLineFinished({ ...base, heardWords: 30, expectedWords: 37 }), true);
-  assert.equal(isLineFinished({ ...base, heardWords: 1, expectedWords: 3 }), true);
+test('isLineFinished ends quickly once the end of the line has been heard', () => {
+  // Phone report 4 Oct 2026: he finished one line, the app kept waiting, and he ran on into his next line.
+  assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, now: 2100, gapMs: 2000, endHeard: true }), true);
+});
+
+test('isLineFinished waits twice as long while the end of the line has not been heard', () => {
+  // A pause partway through ("Look. ... Read it.") should not end the line.
+  const base = { heardSomething: true, lastSpeechAt: 1000, gapMs: 2000, endHeard: false };
+  assert.equal(isLineFinished({ ...base, now: 3500 }), false);
+  assert.equal(isLineFinished({ ...base, now: 5100 }), true);
+});
+
+test('lineEndHeard is true when the line\'s last word and most of the line were heard', () => {
+  assert.equal(lineEndHeard('Bills ... bills ... bills ... These bills are never ending.', 'bills bills bills never ending'), true);
+  assert.equal(lineEndHeard('Well ... they could deliver a deed, for {cripessake}.', 'well they could deliver a deed for crype sake'), true);
+});
+
+test('lineEndHeard is false partway through a line', () => {
+  assert.equal(lineEndHeard('Look. Read it.', 'look'), false);
+  // The last words come round early in a repeated line, but most of it is still to come.
+  assert.equal(lineEndHeard("I'm a winner! I'm a winner! I'm a winner!", "I'm a winner"), false);
 });
 
 test('isLineFinished waits for the gap after speech, never before any speech', () => {

@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261004b';
-import { parseScript } from './script.js?v=20261004b';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20261004b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261004c';
+import { parseScript } from './script.js?v=20261004c';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20261004c';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -284,6 +284,8 @@ let listeningSince = 0;
 // Restarts after he had started the line: words said during one can be lost or heard twice.
 let midLineRestarts = 0;
 let restartPending = false;
+// Called once when the microphone actually comes on for his line.
+let onMicReady = null;
 function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; listeningSince = 0; midLineRestarts = 0; restartPending = false; }
 
 function startListening() {
@@ -300,7 +302,7 @@ function startListening() {
     lastSpeechAt = Date.now();
     if (restartPending && currentResults.some((r) => r.text.trim())) { midLineRestarts++; restartPending = false; }
   };
-  rec.onaudiostart = () => { listeningSince = Date.now(); };
+  rec.onaudiostart = () => { listeningSince = Date.now(); if (onMicReady) { onMicReady(); onMicReady = null; } };
   rec.onsoundstart = () => { lastSoundAt = Date.now(); };
   rec.onsoundend = () => { lastSoundAt = Date.now(); };
   rec.onerror = (e) => {
@@ -353,10 +355,14 @@ function awaitMyLine(expected, soundOnly = false) {
     let promptLevel = 0;
     let busy = false;
     let phoneRestarts = 0;
-    const expectedWords = expected.split(/\s+/).filter(Boolean).length;
     resetHeard();
+    // The phone's microphone takes a moment to come on; words said before then are lost.
+    if (SIM) setStatus('Your line. Listening...', 'listening');
+    else {
+      setStatus('Your line. Mic starting...', 'listening');
+      onMicReady = () => setStatus('Your line. Go ahead.', 'listening');
+    }
     startListening();
-    setStatus('Your line. Listening...', 'listening');
     const tick = setInterval(async () => {
       if (busy || speaking) return;
       let cmd = tapCommand; tapCommand = null;
@@ -366,8 +372,9 @@ function awaitMyLine(expected, soundOnly = false) {
         // A sound-only line ("Argh!") may produce no words at all; any sound counts.
         const heardSomething = utterance.length > 0 || (soundOnly && lastSoundAt > 0);
         const lastHeard = soundOnly ? Math.max(lastSpeechAt, lastSoundAt) : lastSpeechAt;
-        const heardWords = utterance.split(/\s+/).filter(Boolean).length;
-        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs(), listeningSince, heardWords, expectedWords: soundOnly ? 0 : expectedWords })) return;
+        // Commands and sound-only lines use the plain wait; lines wait less once their end is heard.
+        const endHeard = soundOnly || detectCommand(utterance) ? undefined : lineEndHeard(expected, utterance);
+        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs(), listeningSince, endHeard })) return;
         cmd = detectCommand(utterance);
         phoneRestarts = midLineRestarts;
         resetHeard();

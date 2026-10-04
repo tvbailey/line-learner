@@ -224,12 +224,26 @@ export function assembleTranscript(earlierSessions, currentResults) {
 
 // The line is finished once he has said something and then been quiet for the gap.
 // Quiet counts from when the phone last resumed listening (it can't hear him while restarting),
-// though never more than one extra gap. If far less than the line has been heard, wait twice as long.
-export function isLineFinished({ heardSomething, lastSpeechAt, now, gapMs, listeningSince = 0, heardWords = 0, expectedWords = 0 }) {
+// though never more than one extra gap. `endHeard` (from lineEndHeard) tunes the wait: once the
+// end of the line is heard, half the gap, so he doesn't run on into his next line; until then,
+// twice the gap, so a pause partway through doesn't end it. Left out, the plain gap.
+export function isLineFinished({ heardSomething, lastSpeechAt, now, gapMs, listeningSince = 0, endHeard }) {
   if (!heardSomething) return false;
   const quietFrom = Math.max(lastSpeechAt, Math.min(listeningSince, lastSpeechAt + gapMs));
-  const shortOfLine = expectedWords >= 6 && heardWords < expectedWords / 2;
-  return now - quietFrom >= (shortOfLine ? 2 * gapMs : gapMs);
+  const wait = endHeard === true ? gapMs / 2 : endHeard === false ? 2 * gapMs : gapMs;
+  return now - quietFrom >= wait;
+}
+
+// Has he reached the end of the line? The last heard word (or two, run together) sounds like the
+// line's last word, and at least 60% of the line's words have been heard.
+export function lineEndHeard(expected, heard) {
+  const want = normalize(cleanText(stripDirections(expected)));
+  const got = normalize(heard);
+  if (!want.length || !got.length || got.length < 0.6 * want.length) return false;
+  const last = want[want.length - 1];
+  const tails = [got[got.length - 1], got.slice(-2).join('')];
+  // Sound-alike only for long last words (made-up ones, mostly); short words sound alike too easily.
+  return tails.some((t) => canon(t) === canon(last) || (last.length >= 6 && soundKeysClose(last, t)));
 }
 
 // Stage directions in parentheses are shown on screen but never spoken or checked.
