@@ -82,6 +82,11 @@ test('a real word skipped between two made-up words is still caught as missing',
   assert.deepEqual(r.missing, ['britches']);
 });
 
+test('a word the phone splits in two matches even when the first half is a word in the line', () => {
+  // Phone report 4 Oct 2026: "apiece" heard as "a piece" in a line that also has "a".
+  assert.equal(compareLine('I had to get a jump. Those things are up to six dollars apiece.', 'I had to get a jump those things are up to six dollars a piece').match, true);
+});
+
 test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
   // Phone report 1 Oct 2026: the line was ended during the phone's own listening restart, cutting him off.
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 3200, gapMs: 2000 }), false);

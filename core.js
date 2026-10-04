@@ -70,7 +70,8 @@ function fixRunTogether(b, real) {
   for (let j = 0; j < b.length; j++) {
     const w = b[j];
     if (!known.has(w) && pairs.has(w)) out.push(...pairs.get(w));
-    else if (!known.has(w) && j + 1 < b.length && known.has(w + b[j + 1])) { out.push(w + b[j + 1]); j++; }
+    // Join unless both halves are words of the line too ("a piece" for "apiece" in a line with "a").
+    else if (j + 1 < b.length && known.has(w + b[j + 1]) && !(known.has(w) && known.has(b[j + 1]))) { out.push(w + b[j + 1]); j++; }
     else out.push(w);
   }
   return out;

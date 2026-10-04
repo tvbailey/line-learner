@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261001b';
-import { parseScript } from './script.js?v=20261001b';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20261001b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261004a';
+import { parseScript } from './script.js?v=20261004a';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20261004a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -130,9 +130,14 @@ function renderScript() {
   $('summary').hidden = true;
   showLastResult('', '');
   if (drill && !steps.length) $('script').textContent = 'No made-up words in this scene.';
+  // A stage direction rides on the line after it, as a small note, instead of a row of its own
+  // (Thomas, 4 Oct 2026: separate rows made the script feel chopped into sections).
+  let directions = [];
   steps.forEach((st, i) => {
     if (st.action === 'cue' && !drill) return;
     const it = st.item;
+    const next = steps.slice(i + 1).find((s) => !(s.action === 'cue' && !drill) && s.item.kind !== 'direction');
+    if (it.kind === 'direction' && next && next.item.kind === 'line') { directions.push(it.text); return; }
     const div = document.createElement('div');
     div.id = 'ln' + i;
     if (it.kind === 'song') { div.className = 'ln song'; div.textContent = `Song: ${it.title}`; }
@@ -143,6 +148,8 @@ function renderScript() {
       const who = document.createElement('span');
       who.className = 'who';
       who.textContent = it.who + (it.sung ? ' (sung)' : '') + (st.action === 'skip' ? ' - skipped' : '');
+      for (const d of directions) { const s = document.createElement('span'); s.className = 'dir'; s.textContent = `(${d})`; div.append(s); }
+      directions = [];
       div.append(who, document.createTextNode(cleanText(it.text)));
     }
     $('script').append(div);
@@ -276,7 +283,8 @@ let lastSoundAt = 0;
 let listeningSince = 0;
 // Restarts after he had started the line: words said during one can be lost or heard twice.
 let midLineRestarts = 0;
-function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; listeningSince = 0; midLineRestarts = 0; }
+let restartPending = false;
+function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; listeningSince = 0; midLineRestarts = 0; restartPending = false; }
 
 function startListening() {
   wantListening = true;
@@ -290,6 +298,7 @@ function startListening() {
   rec.onresult = (e) => {
     currentResults = dedupe(Array.from(e.results).map((r) => ({ final: r.isFinal, text: r[0].transcript })));
     lastSpeechAt = Date.now();
+    if (restartPending && currentResults.some((r) => r.text.trim())) { midLineRestarts++; restartPending = false; }
   };
   rec.onaudiostart = () => { listeningSince = Date.now(); };
   rec.onsoundstart = () => { lastSoundAt = Date.now(); };
@@ -307,7 +316,9 @@ function startListening() {
     currentResults = [];
     if (wantListening && !micBlocked) {
       restarts++;
-      if (earlierSessions.length) midLineRestarts++;
+      // Counts as mid-line only if he goes on speaking afterward (see onresult); the phone
+      // usually stops right after he finishes, which is not a cut.
+      if (earlierSessions.length) restartPending = true;
       listeningSince = Date.now();
       log(`listening stopped by the phone; restarting (#${restarts})`);
       // Restart at once: words spoken while the phone isn't listening are lost.
