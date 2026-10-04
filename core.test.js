@@ -87,6 +87,20 @@ test('a word the phone splits in two matches even when the first half is a word 
   assert.equal(compareLine('I had to get a jump. Those things are up to six dollars apiece.', 'I had to get a jump those things are up to six dollars a piece').match, true);
 });
 
+test('lineEndHeard waits for every repeat of a tag line', () => {
+  // Fable's review, 4 Oct 2026: a repeated tag ended the line early at a comic beat.
+  assert.equal(lineEndHeard("It's a major award! A major award!", "it's a major award"), false);
+  assert.equal(lineEndHeard('Get out! Get out, get out, get out!', 'get out get out get out'), false);
+  assert.equal(lineEndHeard("It's a major award! A major award!", "it's a major award a major award"), true);
+});
+
+test('a real word swapped for another beside a made-up word is not counted as said', () => {
+  // Fable's review, 4 Oct 2026: "trash" for "ash" and "tool" for "fool" passed as Matched.
+  assert.equal(compareLine("{racklin'} ash!", 'racklin trash').match, false);
+  assert.equal(compareLine('{Consarned} fool!', 'concerned tool').match, false);
+  assert.equal(compareLine('Holy {smokes}, Ralphie', 'holy smokes ralph').match, false);
+});
+
 test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
   // Phone report 1 Oct 2026: the line was ended during the phone's own listening restart, cutting him off.
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 3200, gapMs: 2000 }), false);
@@ -102,11 +116,12 @@ test('isLineFinished ends quickly once the end of the line has been heard', () =
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, now: 2100, gapMs: 2000, endHeard: true }), true);
 });
 
-test('isLineFinished waits twice as long while the end of the line has not been heard', () => {
-  // A pause partway through ("Look. ... Read it.") should not end the line.
+test('isLineFinished waits half as long again while the end of the line has not been heard', () => {
+  // A pause partway through ("Look. ... Read it.") should not end the line; but a line whose
+  // ending the phone misheard should not wait twice as long either (Fable's review, 4 Oct 2026).
   const base = { heardSomething: true, lastSpeechAt: 1000, gapMs: 2000, endHeard: false };
   assert.equal(isLineFinished({ ...base, now: 3500 }), false);
-  assert.equal(isLineFinished({ ...base, now: 5100 }), true);
+  assert.equal(isLineFinished({ ...base, now: 4100 }), true);
 });
 
 test('lineEndHeard is true when the line\'s last word and most of the line were heard', () => {

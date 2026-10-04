@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261004c';
-import { parseScript } from './script.js?v=20261004c';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20261004c';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261004d';
+import { parseScript } from './script.js?v=20261004d';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20261004d';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -332,6 +332,7 @@ function startListening() {
 
 function stopListening() {
   wantListening = false;
+  onMicReady = null;
   if (rec) { rec.onend = null; try { rec.abort(); } catch (_) { /* already stopped */ } rec = null; }
 }
 
@@ -349,6 +350,18 @@ async function sayOther(text, who = '') {
   await speak(cleanText(stripDirections(text)), who);
 }
 
+// Start listening for his line. The phone's microphone takes a moment to come on and words said
+// before then are lost, so the status says "Mic starting..." until it is on (or 2 s have passed,
+// in case the phone never reports it).
+function listenForLine() {
+  if (SIM) { setStatus('Your line. Listening...', 'listening'); startListening(); return; }
+  setStatus('Your line. Mic starting...', 'listening');
+  const ready = () => { if (onMicReady === ready) { onMicReady = null; setStatus('Your line. Go ahead.', 'listening'); } };
+  onMicReady = ready;
+  setTimeout(ready, 2000);
+  startListening();
+}
+
 // Wait for one of his lines, handling commands, until he says a real line.
 function awaitMyLine(expected, soundOnly = false) {
   return new Promise((resolve) => {
@@ -356,13 +369,7 @@ function awaitMyLine(expected, soundOnly = false) {
     let busy = false;
     let phoneRestarts = 0;
     resetHeard();
-    // The phone's microphone takes a moment to come on; words said before then are lost.
-    if (SIM) setStatus('Your line. Listening...', 'listening');
-    else {
-      setStatus('Your line. Mic starting...', 'listening');
-      onMicReady = () => setStatus('Your line. Go ahead.', 'listening');
-    }
-    startListening();
+    listenForLine();
     const tick = setInterval(async () => {
       if (busy || speaking) return;
       let cmd = tapCommand; tapCommand = null;
@@ -376,7 +383,8 @@ function awaitMyLine(expected, soundOnly = false) {
         const endHeard = soundOnly || detectCommand(utterance) ? undefined : lineEndHeard(expected, utterance);
         if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs(), listeningSince, endHeard })) return;
         cmd = detectCommand(utterance);
-        phoneRestarts = midLineRestarts;
+        // A restart he never spoke after may still have swallowed his last words.
+        phoneRestarts = midLineRestarts + (restartPending ? 1 : 0);
         resetHeard();
       }
       busy = true;
@@ -389,8 +397,7 @@ function awaitMyLine(expected, soundOnly = false) {
         stopListening();
         await speak(text);
         resetHeard();
-        startListening();
-        setStatus('Your line. Listening...', 'listening');
+        listenForLine();
         busy = false;
         return;
       }

@@ -124,6 +124,10 @@ function alignLine(parts, b) {
     // "recognize"): count it as said when the heard words sound closer with it than without it.
     for (const i of [realBefore - 1, realBefore]) {
       if (i < 0 || i >= a.length || matchedJ[i] >= 0 || !heardText) continue;
+      // A heard word at that edge that sounds like the real word alone ("trash" for "ash") is a
+      // swap, not a run-together: leave the real word missing.
+      const edge = i < realBefore ? words[0] : words[words.length - 1];
+      if (soundsAlike(a[i], edge) || soundKeysClose(a[i], edge)) continue;
       const withWord = i < realBefore ? `${a[i]} ${p.written}` : `${p.written} ${a[i]}`;
       if (similarity(soundKey(withWord), soundKey(heardText)) > similarity(soundKey(p.written), soundKey(heardText))) absorbed.add(i);
     }
@@ -226,11 +230,11 @@ export function assembleTranscript(earlierSessions, currentResults) {
 // Quiet counts from when the phone last resumed listening (it can't hear him while restarting),
 // though never more than one extra gap. `endHeard` (from lineEndHeard) tunes the wait: once the
 // end of the line is heard, half the gap, so he doesn't run on into his next line; until then,
-// twice the gap, so a pause partway through doesn't end it. Left out, the plain gap.
+// one and a half gaps, so a pause partway through doesn't end it. Left out, the plain gap.
 export function isLineFinished({ heardSomething, lastSpeechAt, now, gapMs, listeningSince = 0, endHeard }) {
   if (!heardSomething) return false;
   const quietFrom = Math.max(lastSpeechAt, Math.min(listeningSince, lastSpeechAt + gapMs));
-  const wait = endHeard === true ? gapMs / 2 : endHeard === false ? 2 * gapMs : gapMs;
+  const wait = endHeard === true ? gapMs / 2 : endHeard === false ? 1.5 * gapMs : gapMs;
   return now - quietFrom >= wait;
 }
 
@@ -241,6 +245,9 @@ export function lineEndHeard(expected, heard) {
   const got = normalize(heard);
   if (!want.length || !got.length || got.length < 0.6 * want.length) return false;
   const last = want[want.length - 1];
+  // A tag line repeats its last word ("A major award! A major award!"): wait for every repeat.
+  const count = (words) => words.filter((w) => canon(w) === canon(last)).length;
+  if (count(want) > 1 && count(got) < count(want)) return false;
   const tails = [got[got.length - 1], got.slice(-2).join('')];
   // Sound-alike only for long last words (made-up ones, mostly); short words sound alike too easily.
   return tails.some((t) => canon(t) === canon(last) || (last.length >= 6 && soundKeysClose(last, t)));
