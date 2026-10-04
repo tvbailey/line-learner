@@ -48,6 +48,12 @@ test('with songs skipped, everything inside a song is skipped, spoken lines incl
     ['speak:Nice.', 'speak:G', 'skip:ONE', 'skip:Oh, Peter Pan.', 'skip:TWO', 'show:songEnd', 'speak:Boys, breakfast!', 'listen:Quiet!']);
 });
 
+test('with songs skipped, spoken lines after the music starts but before the singing are kept', () => {
+  // Thomas, 4 Oct 2026: "Get me a crowbar" comes after the song marker but before anyone sings.
+  assert.deepEqual(planSkipping('# S\nMOTHER: Fragile.\n[SONG: A]\nTHE OLD MAN: Crowbar.\n(He tips the crate.)\nTHE OLD MAN: ~ HERE\nTHE OLD MAN: Ha!\n[END SONG]\n'),
+    ['speak:Fragile.', 'speak:A', 'listen:Crowbar.', 'show:He tips the crate.', 'skip:HERE', 'skip:Ha!', 'show:songEnd']);
+});
+
 test('with songs skipped, a line right after the song gets the song\'s last line as its cue', () => {
   assert.deepEqual(planSkipping('# S\n[SONG: G]\nMOTHER: ~ TWO\n[END SONG]\nTHE OLD MAN: Quiet!\n'),
     ['speak:G', 'skip:TWO', 'show:songEnd', 'cue:TWO', 'listen:Quiet!']);
