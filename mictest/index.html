@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Line Runner Mic Test</title>
+<!-- Turns on the browser's cross-origin isolation, which Moonshine's fast build needs and
+     GitHub Pages can't switch on with headers. Scoped to this folder only. -->
+<script src="coi-serviceworker.js"></script>
+<style>
+  :root { --bg: #f4f2f7; --surface: #ffffff; --text: #1d1b22; --muted: #5d5868; --accent: #6a4a9c; --ok: #1d6b3a; --bad: #a3262a; --line: #d9d4e2; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17151c; --surface: #221f29; --text: #ece9f2; --muted: #a9a3b5; --accent: #b79cf0; --ok: #7fd49b; --bad: #f08a8d; --line: #3a3544; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+  h2 { font-size: 1.15rem; margin: 0 0 6px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: .95rem; }
+  button { font: inherit; font-weight: 600; min-height: 48px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: var(--bg); margin: 6px 6px 6px 0; }
+  button.secondary { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .45; }
+  .meter { height: 14px; background: var(--line); border-radius: 7px; overflow: hidden; margin: 10px 0; }
+  .meter > div { height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
+  .say { font-size: 1.3rem; font-weight: 700; margin: 10px 0; }
+  .status { font-weight: 600; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  ol { padding-left: 20px; } li { margin: 6px 0; }
+  textarea { width: 100%; min-height: 160px; font: 13px/1.4 ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  label { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; margin-right: 16px; }
+  input[type=radio] { width: 22px; height: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Line Runner mic test</h1>
+  <p class="muted">Three short checks, about 10 minutes. Do it in the car if you can, parked with the engine running or as a passenger, so the road noise is real. Then tap <b>Copy report</b> at the bottom and paste it to Reggie.</p>
+  <p id="iso" class="muted"></p>
+
+  <section>
+    <h2>1. Keep the mic on (30 seconds)</h2>
+    <p>This keeps the microphone on the whole time, the way the new Line Runner would. Read the practice lines below out loud, with normal pauses. <b>Listen for dings.</b></p>
+    <ol id="practice1"></ol>
+    <div class="meter"><div id="meter1"></div></div>
+    <p id="status1" class="status">Not started.</p>
+    <button id="start1">Start mic check</button>
+    <p>Did you hear any dings while it was on?</p>
+    <label><input type="radio" name="ding" value="no"> No dings</label>
+    <label><input type="radio" name="ding" value="yes"> Yes, dings</label>
+  </section>
+
+  <section>
+    <h2>2. Moonshine, listening on the phone itself</h2>
+    <p>Downloads a speech model once (it stays on the phone after that), then listens with nothing sent anywhere. Use Wi-Fi for the download if you can.</p>
+    <label><input type="radio" name="model" value="tiny" checked> Tiny (smaller download, try first)</label>
+    <label><input type="radio" name="model" value="small"> Small (bigger, more accurate)</label>
+    <div class="meter"><div id="meter2"></div></div>
+    <p id="status2" class="status">Not started.</p>
+    <button id="load2">Download and load</button>
+    <button id="start2" disabled>Start listening</button>
+    <p class="say" id="say2"></p>
+    <ol id="results2"></ol>
+  </section>
+
+  <section>
+    <h2>3. Upload speed</h2>
+    <p>Times how long it takes to send something the size of a 6-second recording, three times. <b>No voice is sent</b>, only filler data, to Cloudflare's public speed test. Do this one on mobile data, not Wi-Fi.</p>
+    <p id="status3" class="status">Not started.</p>
+    <button id="start3">Test upload speed</button>
+  </section>
+
+  <section>
+    <h2>Report</h2>
+    <textarea id="report" readonly></textarea>
+    <button id="copy">Copy report</button>
+  </section>
+</main>
+
+<script type="module">
+const MOONSHINE = 'https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-wasm@0.1.5/dist/index.js';
+// Original practice lines (not from any script): plain lines, made-up words, a pause mid-line, a repeat.
+const LINES = [
+  'Well, look at that. The mail came early today.',
+  'Grumbleflax! Who left the hose out on the driveway?',
+  'Hand me the wrench. (pause two seconds) No, the big one.',
+  'Snickerwhomp, flapdoodle furnace! It went out again!',
+  'Hooray! Hooray! We won the raffle!',
+];
+const MADE_UP = ['Grumbleflax', 'Snickerwhomp', 'flapdoodle'];
+const $ = (id) => document.getElementById(id);
+const t0 = performance.now();
+const log = [];
+function note(line) { log.push(`${((performance.now() - t0) / 1000).toFixed(1).padStart(6)}s  ${line}`); render(); }
+function render() {
+  const ding = document.querySelector('input[name=ding]:checked');
+  $('report').value = [
+    'Line Runner mic test report',
+    `when: ${new Date().toString()}`,
+    `browser: ${navigator.userAgent}`,
+    `cross-origin isolated: ${self.crossOriginIsolated}; cores: ${navigator.hardwareConcurrency}; memory (GB, rough): ${navigator.deviceMemory ?? 'unknown'}`,
+    `connection: ${navigator.connection ? `${navigator.connection.effectiveType}, ~${navigator.connection.downlink} Mbps` : 'unknown'}`,
+    `dings heard in step 1: ${ding ? ding.value : 'not answered'}`,
+    '',
+    ...log,
+  ].join('\n');
+}
+for (const id of ['practice1']) $(id).innerHTML = LINES.map((l) => `<li>${l}</li>`).join('');
+$('iso').textContent = self.crossOriginIsolated ? 'Ready.' : 'Setting up (the page may reload itself once)...';
+document.querySelectorAll('input[name=ding]').forEach((r) => r.onchange = render);
+note('page loaded');
+window.addEventListener('error', (e) => note(`page error: ${e.message}`));
+window.addEventListener('unhandledrejection', (e) => note(`page error: ${e.reason && e.reason.message || e.reason}`));
+
+// ---------- a level meter on a mic stream, with speech/pause detection ----------
+function startMeter(stream, bar, onLevel) {
+  const ctx = new AudioContext();
+  const src = ctx.createMediaStreamSource(stream);
+  const an = ctx.createAnalyser();
+  an.fftSize = 1024;
+  src.connect(an);
+  const buf = new Float32Array(an.fftSize);
+  let stopped = false;
+  (function tick() {
+    if (stopped) return;
+    an.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += v * v;
+    const rms = Math.sqrt(sum / buf.length);
+    bar.style.width = `${Math.min(100, rms * 400)}%`;
+    onLevel(rms);
+    requestAnimationFrame(tick);
+  })();
+  return () => { stopped = true; ctx.close(); };
+}
+
+// Speech/pause tracking: the quiet floor is learned from the first second, speech is well above it.
+function speechTracker() {
+  const levels = [];
+  let floor = null, speaking = false, lastLoud = 0, bursts = 0, peak = 0;
+  return {
+    feed(rms) {
+      const now = performance.now();
+      peak = Math.max(peak, rms);
+      if (floor === null) { levels.push(rms); if (levels.length > 45) { levels.sort((a, b) => a - b); floor = levels[Math.floor(levels.length / 2)]; } return; }
+      const loud = rms > Math.max(floor * 3, 0.01);
+      if (loud) { lastLoud = now; if (!speaking) { speaking = true; bursts++; } }
+      else if (speaking && now - lastLoud > 400) speaking = false;
+    },
+    get floor() { return floor; }, get bursts() { return bursts; }, get peak() { return peak; }, get lastLoud() { return lastLoud; },
+  };
+}
+
+// ---------- 1. keep the mic on ----------
+$('start1').onclick = async () => {
+  $('start1').disabled = true;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (err) { $('status1').textContent = `Microphone failed: ${err.message}`; note(`step 1: microphone failed: ${err.name} ${err.message}`); $('start1').disabled = false; return; }
+  const track = stream.getAudioTracks()[0];
+  const s = track.getSettings();
+  note(`step 1: mic on (${track.label || 'default mic'}; echo cancel ${s.echoCancellation}, noise suppression ${s.noiseSuppression}, auto gain ${s.autoGainControl}, ${s.sampleRate || '?'} Hz)`);
+  let ended = false;
+  track.onended = () => { ended = true; note('step 1: the phone turned the mic off by itself'); };
+  track.onmute = () => note('step 1: the phone muted the mic');
+  track.onunmute = () => note('step 1: the phone unmuted the mic');
+  const tr = speechTracker();
+  const stop = startMeter(stream, $('meter1'), (rms) => tr.feed(rms));
+  const end = performance.now() + 30000;
+  const timer = setInterval(() => {
+    const left = Math.max(0, Math.round((end - performance.now()) / 1000));
+    $('status1').textContent = `Mic on. Read the lines. ${left} s left. Bursts of speech heard: ${tr.bursts}.`;
+    if (left === 0 || ended) {
+      clearInterval(timer); stop(); stream.getTracks().forEach((t) => t.stop());
+      $('status1').textContent = `Done. The mic stayed on ${ended ? 'until the phone turned it off' : 'the whole 30 seconds'}. Now answer the ding question.`;
+      note(`step 1: done; mic stayed on: ${!ended}; speech bursts: ${tr.bursts}; quiet floor ${tr.floor?.toFixed(4)}, peak ${tr.peak.toFixed(3)}`);
+      $('start1').disabled = false;
+    }
+  }, 250);
+};
+
+// ---------- 2. Moonshine ----------
+let mic = null, moon = null, current = 0, tracker = null, stopMeter2 = null, lastText = '', lastTextAt = 0;
+$('load2').onclick = async () => {
+  $('load2').disabled = true;
+  const size = document.querySelector('input[name=model]:checked').value;
+  $('status2').textContent = 'Loading Moonshine...';
+  const tStart = performance.now();
+  try {
+    moon = await import(MOONSHINE);
+    note(`step 2: library loaded in ${((performance.now() - tStart) / 1000).toFixed(1)} s; model ${size}`);
+    let lastPct = -1, totalMB = null;
+    mic = new moon.MicTranscriber()
+      .modelArch(size === 'small' ? moon.ModelArch.SmallStreaming : moon.ModelArch.TinyStreaming)
+      .onProgress((fraction, file, bytes) => {
+        $('meter2').style.width = `${Math.round(fraction * 100)}%`;
+        if (bytes && bytes.total) totalMB = (bytes.total / 1048576).toFixed(0);
+        const pct = Math.floor(fraction * 10) * 10;
+        $('status2').textContent = `Downloading the model: ${Math.round(fraction * 100)}%${totalMB ? ` of about ${totalMB} MB` : ''}`;
+        if (pct !== lastPct) { lastPct = pct; note(`step 2: download ${pct}%${totalMB ? ` of ${totalMB} MB` : ''}`); }
+      })
+      .onText((text) => { lastText = text; lastTextAt = performance.now(); $('say2').dataset.heard = text; showHeard(text); })
+      .onLine((line) => lineDone(line))
+      .onError((err) => note(`step 2: Moonshine error: ${err.message}`));
+    const tLoad = performance.now();
+    await mic.load();
+    note(`step 2: model ready in ${((performance.now() - tLoad) / 1000).toFixed(1)} s`);
+    $('status2').textContent = 'Model ready. Tap Start listening, then say each line when it appears.';
+    $('meter2').style.width = '0';
+    $('start2').disabled = false;
+  } catch (err) {
+    $('status2').textContent = `Moonshine could not load: ${err.message}`;
+    note(`step 2: FAILED to load: ${err.name}: ${err.message}`);
+    $('load2').disabled = false;
+  }
+};
+
+function showHeard(text) { $('status2').textContent = `Hearing: ${text}`; }
+function nextLine() {
+  if (current >= LINES.length) {
+    $('say2').textContent = 'All done. Thank you!';
+    $('status2').textContent = 'Finished.';
+    mic.stop(); if (stopMeter2) stopMeter2();
+    note('step 2: finished all lines');
+    return;
+  }
+  const line = LINES[current];
+  $('say2').textContent = `Say: ${line}`;
+  // Bias toward the words he is about to say, as Line Runner would.
+  try { mic.setContext(line.replace(/\(.*?\)/g, '')); mic.setKeyterms(MADE_UP); } catch (err) { note(`step 2: biasing not available: ${err.message}`); }
+}
+function lineDone(line) {
+  const text = (line && line.text || '').trim();
+  if (!text || current >= LINES.length) return;
+  const now = performance.now();
+  const afterQuiet = tracker && tracker.lastLoud ? Math.round(now - tracker.lastLoud) : null;
+  const li = document.createElement('li');
+  li.innerHTML = `<b>Script:</b> ${LINES[current]}<br><b>Heard:</b> `;
+  li.append(document.createTextNode(text));
+  $('results2').append(li);
+  note(`step 2: line ${current + 1}: heard "${text}" | model's own latency ${line.lastTranscriptionLatencyMs ?? '?'} ms | result came ${afterQuiet ?? '?'} ms after he went quiet | spoke ${line.duration?.toFixed?.(1) ?? '?'} s`);
+  current++;
+  nextLine();
+}
+$('start2').onclick = async () => {
+  $('start2').disabled = true;
+  try {
+    await mic.start();
+    note('step 2: listening started');
+    // A second, separate look at the mic, only to time how soon results come after he stops.
+    // Optional: if the phone won't share the mic twice, the test goes on without the timing.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tracker = speechTracker();
+      const stop = startMeter(stream, $('meter2'), (rms) => tracker.feed(rms));
+      stopMeter2 = () => { stop(); stream.getTracks().forEach((t) => t.stop()); };
+    } catch (err) { note(`step 2: no second mic for timing (${err.message}); results still recorded`); }
+    current = 0;
+    nextLine();
+  } catch (err) {
+    $('status2').textContent = `Could not start listening: ${err.message}`;
+    note(`step 2: FAILED to start: ${err.name}: ${err.message}`);
+    $('start2').disabled = false;
+  }
+};
+
+// ---------- 3. upload speed ----------
+$('start3').onclick = async () => {
+  $('start3').disabled = true;
+  const bytes = 6 * 16000; // about 6 seconds of compressed speech
+  const filler = new Uint8Array(bytes);
+  // Random filler, so nothing along the way can compress it (the random API gives 64 KB at a time).
+  for (let i = 0; i < bytes; i += 65536) crypto.getRandomValues(filler.subarray(i, Math.min(bytes, i + 65536)));
+  const times = [];
+  for (let i = 1; i <= 3; i++) {
+    $('status3').textContent = `Sending ${i} of 3...`;
+    const t = performance.now();
+    try {
+      const r = await fetch('https://speed.cloudflare.com/__up', { method: 'POST', body: filler, headers: { 'content-type': 'application/octet-stream' } });
+      await r.text();
+      times.push(Math.round(performance.now() - t));
+      note(`step 3: upload ${i}: ${times[times.length - 1]} ms (${Math.round(bytes / 1024)} KB, status ${r.status})`);
+    } catch (err) { note(`step 3: upload ${i} failed: ${err.message}`); }
+  }
+  const sorted = times.slice().sort((a, b) => a - b);
+  $('status3').textContent = times.length ? `Done. Middle time: ${sorted[Math.floor(sorted.length / 2)]} ms.` : 'Uploads failed.';
+  $('start3').disabled = false;
+};
+
+$('copy').onclick = async () => {
+  render();
+  try { await navigator.clipboard.writeText($('report').value); $('copy').textContent = 'Copied'; }
+  catch (_) { $('report').select(); document.execCommand('copy'); $('copy').textContent = 'Copied'; }
+  setTimeout(() => { $('copy').textContent = 'Copy report'; }, 2000);
+};
+render();
+</script>
+</body>
+</html>
