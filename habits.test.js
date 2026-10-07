@@ -15,11 +15,24 @@ test('diffSpans reports a dropped word as a span with nothing heard', () => {
 
 test('learnable keeps only swaps, never a dropped or an added word', () => {
   const spans = [
-    { before: 'a', written: ['b'], heard: ['c'], after: 'd' },
-    { before: 'a', written: ['b'], heard: [], after: 'd' },
-    { before: 'a', written: [], heard: ['c'], after: 'd' },
+    { before: 'stupid', written: ['hillbillies'], heard: ['hill', 'release'], after: '' },
+    { before: 'stupid', written: ['hillbillies'], heard: [], after: '' },
+    { before: 'stupid', written: [], heard: ['hill'], after: '' },
   ];
   assert.deepEqual(learnable(spans), [spans[0]]);
+});
+
+test('learnable refuses swaps that change the meaning rather than the sound', () => {
+  // Sol's build review, 7 Oct 2026: these were learned, then real mistakes passed as right.
+  assert.deepEqual(learnable(diffSpans('Do not move.', 'do go')), []);
+  assert.deepEqual(learnable(diffSpans('Bring two cups.', 'bring three cups')), []);
+  assert.deepEqual(learnable(diffSpans('Take the red box.', 'take blue box')), []);
+  assert.deepEqual(learnable(diffSpans("I don't know.", 'I do know')), []);
+});
+
+test('learnable still learns genuine sound-alikes', () => {
+  assert.equal(learnable(diffSpans('Stupid hillbillies.', 'stupid hail release')).length, 1);
+  assert.equal(learnable(diffSpans("{Bumpus}! Call 'em off! {Bumpus}!", 'Bumpus call him out of bumpus')).length, 1);
 });
 
 test('learnable refuses long stretches, which are more likely a real misreading than a phone habit', () => {

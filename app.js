@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007d';
-import { parseScript } from './script.js?v=20261007d';
-import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261007d';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261007d';
-import * as voices from './voices.js?v=20261007d';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007e';
+import { parseScript } from './script.js?v=20261007e';
+import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261007e';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261007e';
+import * as voices from './voices.js?v=20261007e';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -171,7 +171,7 @@ async function markRecorded() {
     try { clip = await voices.getClip(st.item.id); } catch (_) { return; }
     const el = $('ln' + i);
     if (!el || el.querySelector('.rec-mark')) continue;
-    if (voices.clipFits(clip, st.item)) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
+    if (voices.clipFits(clip, st.item, prevLineText(st.item))) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
   }
 }
 
@@ -187,7 +187,7 @@ function highlight(i) {
   if (steps[i]) showOnStage(steps[i], steps[i + 1]);
 }
 
-function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, expected = '') {
+function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, expected = '', lineEngine = 'google') {
   const el = $('ln' + i);
   const ok = result.match && !prompted;
   let kind = ok ? 'ok' : 'bad';
@@ -221,10 +221,10 @@ function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, e
     btn.onclick = async () => {
       btn.disabled = true;
       const spans = learnable(diffSpans(expected, heard));
-      let msg = 'Marked right. Nothing to learn: the phone missed words rather than hearing them wrong.';
+      let msg = 'Marked right for this run. Nothing was learned: the phone missed words, or heard a different word rather than a sound-alike, and learning that could hide a real slip later.';
       try {
         if (spans.length) {
-          await voices.addHabits(item, runEngine, spans);
+          await voices.addHabits(item, lineEngine, spans, prevLineText(item));
           voices.askToKeep();
           msg = `Learned for this line: the phone hears ${spans.map((s) => `"${s.heard.join(' ')}" for "${s.written.join(' ')}"`).join(', ')}.`;
         }
@@ -235,7 +235,7 @@ function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, e
       done.className = 'heard ok';
       done.textContent = msg;
       btn.replaceWith(done);
-      log(`line ${i}: he says it was right; ${spans.length ? `learned ${spans.length} habit(s) for ${runEngine}` : 'nothing to learn'}`);
+      log(`line ${i}: he says it was right; ${spans.length ? `learned ${spans.length} habit(s) for ${lineEngine}` : 'nothing to learn'}`);
       refreshVoicesBox();
     };
     el.append(btn);
@@ -345,7 +345,8 @@ function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt 
 // beeps, no restarts, nothing lost in a gap) and is only muted while the other parts are read.
 // It is pointed at the line's made-up words only; pointing it at the whole line could make it
 // "hear" the right words when he said something else.
-const MOONSHINE = 'https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-wasm@0.1.5/dist/index.js';
+const MOON_REV = '0.1.5';
+const MOONSHINE = `https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-wasm@${MOON_REV}/dist/index.js`;
 let moon = null;        // { size, mic, ready, live, stopMeter, errors }
 let moonLoading = null; // { size, promise } while a model is loading, so a second request waits for it
 let moonKeyterms = [];
@@ -383,6 +384,7 @@ function moonError(err) {
   if (moon.errors < 3) return;
   log('on-phone listening failed repeatedly; switching to Google for the rest of this scene');
   stopMoonScene();
+  runEngine = 'google'; // habits from here on are Google's, not Moonshine's
   if (wantListening) startListening();
 }
 
@@ -561,7 +563,7 @@ async function loadSceneClips() {
   for (const st of steps) {
     if (st.item.kind !== 'line' || st.action === 'listen' || st.action === 'show') continue;
     cues++;
-    try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item)) sceneClips.set(st.item.id, c); } catch (_) { /* no storage */ }
+    try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item, prevLineText(st.item))) sceneClips.set(st.item.id, c); } catch (_) { /* no storage */ }
   }
   return { cues, recorded: sceneClips.size };
 }
@@ -691,17 +693,30 @@ async function transcribeClip(clip, key, item) {
   return out.lines.map((l) => l.text).join(' ').trim();
 }
 
-// After one of his own takes: what the phone heard, and a chance to teach it. Returns 'next',
-// 'redo' or 'done'.
+// The line before this one in its scene, stored with a recording or a habit so an identical line
+// elsewhere (or one that moved after a script edit) doesn't pick it up. Sol's build review.
+function prevLineText(item) {
+  for (const sc of script.scenes) {
+    const lines = sc.items.filter((x) => x.kind === 'line');
+    const k = lines.findIndex((x) => x.id === item.id);
+    if (k >= 0) return k > 0 ? lines[k - 1].text : '';
+  }
+  return '';
+}
+
+// After one of his own takes, BEFORE it is saved: what the phone heard, and a chance to teach it.
+// Returns 'keep' (save it and go on), 'redo', 'skip', 'back' or 'stop'. Anything but 'keep'
+// leaves the earlier saved take, if any, untouched.
 async function checkMyTake(item, clip) {
-  const key = engine() === 'google' ? null : engine();
-  if (!key) { log('record: your take was saved but not checked (checking uses "Listen with: This phone")'); return 'next'; }
+  if (engine() === 'google') { log('record: your take was not checked (checking uses "Listen with: This phone")'); return 'keep'; }
+  const key = `${engine()}@${MOON_REV}`;
   setStatus('Checking what the phone hears...', '', 'rec');
   let heard;
-  try { heard = await transcribeClip(clip, key, item); }
-  catch (err) { log(`record: could not check your take: ${err.message}`); setStatus('Could not check that take. It is saved.', '', 'problem'); await sleep(1500); return 'next'; }
+  try { heard = await transcribeClip(clip, engine(), item); }
+  catch (err) { log(`record: could not check your take: ${err.message}`); setStatus('Could not check that take; keeping it.', '', 'problem'); await sleep(1500); return 'keep'; }
   const expected = stripDirections(item.text);
-  const fixed = applyHabits(expected, heard, await voices.getHabits(item, key).catch(() => []));
+  const prev = prevLineText(item);
+  const fixed = applyHabits(expected, heard, await voices.getHabits(item, key, prev).catch(() => []));
   const r = compareLine(expected, fixed.text);
   log(`record: your line checked with ${key}: ${r.match ? 'matched' : 'differs'} | heard "${heard}"`);
   const spans = r.match ? [] : learnable(diffSpans(expected, heard));
@@ -709,20 +724,24 @@ async function checkMyTake(item, clip) {
   $('recLearn').hidden = !spans.length;
   if (r.match) $('recCheckText').textContent = `✓ The phone heard it right: "${heard}"`;
   else if (spans.length) $('recCheckText').textContent = `The phone heard ${spans.map((s) => `"${s.heard.join(' ')}" for "${s.written.join(' ')}"`).join(', ')}. If you said it right, tap "That's the phone" and it will know next time. If you slipped, Retake.`;
-  else $('recCheckText').textContent = `The phone heard: "${heard || '(nothing)'}". It missed words rather than hearing them wrong, so there's nothing to learn. Retake, or keep it and go on.`;
+  else $('recCheckText').textContent = `The phone heard: "${heard || '(nothing)'}". Nothing here can be learned safely (missed words, or a different word rather than a sound-alike). Retake, or keep it and go on.`;
   setStatus(r.match ? 'Your line came through right.' : 'Was that the phone, or a slip?', '', 'rec');
   try {
     for (;;) {
       const act = await recWait();
       if (act === 'recLearn' && spans.length) {
-        await voices.addHabits(item, key, spans);
+        await voices.addHabits(item, key, spans, prev);
         log(`record: learned ${spans.length} habit(s) for ${key}`);
-        return 'next';
+        return 'keep';
       }
+      if (act === 'recKeep' || act === 'recNext') return 'keep';
       if (act === 'recRedo' || act === 'recRetake') return 'redo';
-      if (act === 'recKeep' || act === 'recNext' || act === 'recSkip') return 'next';
-      if (act === 'recDone') return 'done';
-      if (act === 'recPlay') await voices.playClip(clip).catch(() => {});
+      if (act === 'recSkip') return 'skip';
+      if (act === 'recBack') return 'back';
+      if (act === 'recDone' || act === 'dropped') return act === 'dropped' ? 'redo' : 'stop';
+      if (act === 'recPlay') {
+        try { await voices.playClip(clip); } catch (err) { setStatus(`Could not play that take: ${err.message}`, '', 'problem'); }
+      }
     }
   } finally { $('recCheck').hidden = true; }
 }
@@ -740,7 +759,7 @@ async function runRecord() {
   await keepAwake();
   voices.audio();
   log(`record: storage protected from automatic clearing: ${await voices.askToKeep()}`);
-  const have = await Promise.all(list.map((st) => voices.getClip(st.item.id).then((c) => voices.clipFits(c, st.item)).catch(() => false)));
+  const have = await Promise.all(list.map((st) => voices.getClip(st.item.id).then((c) => voices.clipFits(c, st.item, prevLineText(st.item))).catch(() => false)));
   let i = have.findIndex((h) => !h);
   if (i < 0) i = 0;
   log(`record start: ${scene.title}; ${have.filter(Boolean).length} of ${list.length} lines already recorded; starting at line ${i + 1}`);
@@ -769,24 +788,30 @@ async function runRecord() {
         else if (act === 'recDone') break;
         else if (act === 'recPlay') {
           const c = await voices.getClip(st.item.id).catch(() => null);
-          if (voices.clipFits(c, st.item)) { setStatus('Playing the saved take...', '', 'cue'); await voices.playClip(c).catch(() => {}); }
+          if (voices.clipFits(c, st.item, prevLineText(st.item))) {
+            setStatus('Playing the saved take...', '', 'cue');
+            try { await voices.playClip(c); } catch (err) { setStatus(`Could not play that take: ${err.message}`, '', 'problem'); await sleep(1500); }
+          }
           else { setStatus('No saved take for this line yet.', '', 'problem'); await sleep(1200); }
         }
         continue; // Retake, Play and the rest start this line again
       }
       const blob = await t.stop();
       if (blob.size < 1500 || Date.now() - t.startedAt < 600) { setStatus('Nothing was recorded. Read the line again.', '', 'problem'); await sleep(1500); continue; }
-      const clip = { id: st.item.id, text: st.item.text, who: st.item.who, scene: scene.title, version: script.version || '', mime: blob.type, blob, savedAt: Date.now() };
+      const clip = { id: st.item.id, text: st.item.text, who: st.item.who, sung: !!st.item.sung, prev: prevLineText(st.item), scene: scene.title, version: script.version || '', mime: blob.type, blob, savedAt: Date.now() };
+      // His own lines are checked before saving, so a rejected take never replaces a good one.
+      if (st.action === 'listen') {
+        const verdict = await checkMyTake(st.item, clip);
+        if (verdict === 'redo') continue;
+        if (verdict === 'skip') { i++; continue; }
+        if (verdict === 'back') { i = Math.max(0, i - 1); continue; }
+        if (verdict === 'stop') break;
+      }
       try { await voices.putClip(clip); }
       catch (err) { setStatus(`Could not save that take (${err.message}). Read it again.`, '', 'problem'); log(`record: save failed: ${err.message}`); await sleep(2000); continue; }
       have[i] = true;
       log(`record: saved line ${i + 1} of ${list.length} (${st.item.who}, ${Math.round(blob.size / 1024)} KB)`);
       markRecorded();
-      if (st.action === 'listen') {
-        const next = await checkMyTake(st.item, clip);
-        if (next === 'redo') continue;
-        if (next === 'done') break;
-      }
       i++;
     }
   } finally {
@@ -809,7 +834,10 @@ async function refreshVoicesBox() {
   let clips = [], habits = [];
   try { clips = await voices.allClips(); habits = await voices.allHabits(); } catch (err) { $('voicesCount').textContent = `Storage unavailable: ${err.message}`; return; }
   const n = habits.reduce((s, h) => s + h.items.length, 0);
-  $('voicesCount').textContent = `${clips.length} recorded line${clips.length === 1 ? '' : 's'} and ${n} phone habit${n === 1 ? '' : 's'} on this phone.`;
+  let kept = null;
+  try { kept = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (_) { /* unknown */ }
+  $('voicesCount').textContent = `${clips.length} recorded line${clips.length === 1 ? '' : 's'} and ${n} phone habit${n === 1 ? '' : 's'} on this phone.`
+    + (kept === true ? ' The phone has agreed not to clear them on its own.' : clips.length ? ' The phone could clear them if storage runs low, so keep a backup.' : '');
   const ul = $('habitList');
   ul.innerHTML = '';
   for (const h of habits) {
@@ -867,7 +895,7 @@ async function runScene() {
     setStatus('Getting the on-phone listener ready...', '', 'idle');
     const ok = await startMoonScene();
     listenWith = ok ? `Moonshine ${moon.size} on the phone` : 'Google (Moonshine unavailable)';
-    if (ok) runEngine = `moon-${moon.size}`;
+    if (ok) runEngine = `moon-${moon.size}@${MOON_REV}`;
   }
   const rec = await loadSceneClips();
   log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}; recorded voices for ${rec.recorded} of ${rec.cues} cue lines`);
@@ -887,13 +915,15 @@ async function runScene() {
     const soundOnly = isSoundOnly(expected);
     const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly);
     // Habits he taught the phone for this line and this listener are turned back into script words first.
-    const habits = soundOnly ? [] : await voices.getHabits(item, runEngine).catch(() => []);
+    // The listener that actually heard this line (Moonshine can hand over to Google mid-scene).
+    const lineEngine = runEngine;
+    const habits = soundOnly ? [] : await voices.getHabits(item, lineEngine, prevLineText(item)).catch(() => []);
     const fixed = habits.length ? applyHabits(expected, heard, habits) : { text: heard, used: 0 };
     const result = soundOnly ? { match: true, missing: [], extra: [], likelyMishearing: false } : compareLine(expected, fixed.text);
     result.habitUsed = fixed.used;
     log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.habitUsed ? `, phone habit allowed x${result.habitUsed}` : ''}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''}${phoneRestarts ? `, phone stopped listening ${phoneRestarts}x mid-line` : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
     if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
-    showHeard(i, heard, result, prompted, phoneRestarts, item, expected);
+    showHeard(i, heard, result, prompted, phoneRestarts, item, expected, lineEngine);
     if (result.madeUp && result.madeUp.length) {
       madeUpSeen.push(...result.madeUp);
       // In the drill, flash the made-up words big right after he says them, to check himself.

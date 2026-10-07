@@ -3,7 +3,7 @@
 // "That's the phone" after recording his own line. A habit belongs to one line and one spot in it
 // (the script words on either side), and only a swap is ever learned, never a dropped or added
 // word, so a habit can't cover a word he actually left out.
-import { normalize, canonWord, isFiller, cleanText, stripDirections } from './core.js?v=20261007d';
+import { normalize, canonWord, isFiller, soundsClose, cleanText, stripDirections } from './core.js?v=20261007e';
 
 const words = (text) => normalize(text).filter((w) => !isFiller(w));
 const same = (a, b) => canonWord(a) === canonWord(b);
@@ -33,10 +33,22 @@ export function diffSpans(expected, heard) {
   return spans;
 }
 
-// Only short swaps can be learned: a dropped word, an added word, or a long stretch is more
-// likely a real mistake than a phone habit.
+// Words whose swap changes what the line means, so a swap involving one is never learned.
+const MEANING = new Set(['not', 'no', 'never', 'nor', 'none', 'nothing', 'nobody', 'neither', 'cannot',
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'thirty',
+  'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety', 'hundred', 'thousand', 'million', 'first',
+  'second', 'third', 'half', 'once', 'twice']);
+const changesMeaning = (w) => MEANING.has(w) || /\d/.test(w);
+
+// Only short swaps that sound like the script words can be learned: a phone habit is a
+// mishearing, so a dropped or added word, a long stretch, a swap that sounds different
+// ("blue" for "the red"), or one touching a negation or a number is more likely a real mistake.
+// Sol's build review, 7 Oct 2026.
 export function learnable(spans) {
-  return spans.filter((s) => s.written.length >= 1 && s.heard.length >= 1 && s.written.length <= 3 && s.heard.length <= 4);
+  return spans.filter((s) => s.written.length >= 1 && s.heard.length >= 1 && s.written.length <= 3 && s.heard.length <= 4
+    && !s.written.some(changesMeaning) && !s.heard.some(changesMeaning)
+    && soundsClose(s.written.join(' '), s.heard.join(' ')));
 }
 
 // What was heard, with each learned habit turned back into the script's words where it occurs in

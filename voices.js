@@ -41,18 +41,25 @@ async function run(store, mode, fn) {
 export const getClip = (id) => run('clips', 'readonly', (s) => s.get(id));
 export const putClip = (rec) => run('clips', 'readwrite', (s) => s.put(rec));
 export const allClips = () => run('clips', 'readonly', (s) => s.getAll());
-export function clipFits(clip, item) { return !!clip && clip.text === item.text && clip.who === item.who; }
+// The line before it is checked too, so an identical line elsewhere in the scene (or one that
+// moved after a script edit) doesn't borrow it. Recordings saved before that check existed have
+// no `prev` and are matched on words, speaker and sung or spoken alone.
+export function clipFits(clip, item, prev) {
+  return !!clip && clip.text === item.text && clip.who === item.who
+    && (clip.sung === undefined || clip.sung === !!item.sung)
+    && (clip.prev === undefined || prev === undefined || clip.prev === prev);
+}
 
 // ---------- habits ----------
 // One entry per line and listening engine: { key, lineId, engine, text, items: [spans] }.
 export const habitKey = (lineId, engine) => `${lineId}|${engine}`;
-export async function getHabits(item, engine) {
+export async function getHabits(item, engine, prev) {
   const rec = await run('habits', 'readonly', (s) => s.get(habitKey(item.id, engine)));
-  return rec && rec.text === item.text ? rec.items : [];
+  return rec && rec.text === item.text && (rec.prev === undefined || prev === undefined || rec.prev === prev) ? rec.items : [];
 }
-export async function addHabits(item, engine, spans) {
+export async function addHabits(item, engine, spans, prev) {
   const key = habitKey(item.id, engine);
-  const rec = (await run('habits', 'readonly', (s) => s.get(key))) || { key, lineId: item.id, engine, text: item.text, who: item.who, items: [] };
+  const rec = (await run('habits', 'readonly', (s) => s.get(key))) || { key, lineId: item.id, engine, text: item.text, who: item.who, prev, items: [] };
   const sameSpan = (a, b) => a.before === b.before && a.after === b.after && a.written.join(' ') === b.written.join(' ') && a.heard.join(' ') === b.heard.join(' ');
   for (const sp of spans) if (!rec.items.some((x) => sameSpan(x, sp))) rec.items.push(sp);
   rec.text = item.text;
@@ -105,13 +112,32 @@ export async function backupFile(scriptVersion) {
 // Restores a backup file, merging over what's here (same line, the backup's copy wins). The
 // counts returned are what was read back from storage afterward, not just what was attempted.
 export async function restoreFile(file) {
-  const data = JSON.parse(await file.text());
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (_) { throw new Error('this file is damaged or not a Line Runner backup'); }
   if (!data || data.format !== 'line-runner-backup') throw new Error('this is not a Line Runner backup file');
-  for (const c of data.clips || []) {
+  if (data.formatVersion !== 1) throw new Error(`this backup was made by a newer Line Runner (format ${data.formatVersion}); update the page first`);
+  // Check and decode everything first; only if all of it is good is anything written, all in one
+  // go, so a damaged file can't half-replace good recordings. Sol's build review, 7 Oct 2026.
+  const clips = (data.clips || []).map((c, n) => {
     const { data: b64, ...rest } = c;
-    await putClip({ ...rest, blob: fromBase64(b64, c.mime || 'audio/webm') });
-  }
-  for (const h of data.habits || []) await run('habits', 'readwrite', (s) => s.put(h));
+    if (!c.id || typeof c.text !== 'string' || typeof c.who !== 'string' || typeof b64 !== 'string') throw new Error(`recording ${n + 1} in the file is incomplete; nothing was restored`);
+    let blob;
+    try { blob = fromBase64(b64, c.mime || 'audio/webm'); } catch (_) { throw new Error(`recording ${n + 1} in the file is damaged; nothing was restored`); }
+    return { ...rest, blob };
+  });
+  const habits = (data.habits || []).map((h, n) => {
+    if (!h.key || !Array.isArray(h.items)) throw new Error(`habit entry ${n + 1} in the file is damaged; nothing was restored`);
+    return h;
+  });
+  const d = await db();
+  await new Promise((resolve, reject) => {
+    const tx = d.transaction(['clips', 'habits'], 'readwrite');
+    for (const c of clips) tx.objectStore('clips').put(c);
+    for (const h of habits) tx.objectStore('habits').put(h);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('restore was aborted; nothing was changed'));
+  });
   const ids = new Set((await allClips()).map((c) => c.id));
   const keys = new Set((await allHabits()).map((h) => h.key));
   return {

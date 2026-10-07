@@ -62,6 +62,8 @@ function canon(w) { return CANON.get(w) || w; }
 // For other modules: the comparison form of one normalized word, and whether it's a filler.
 export function canonWord(w) { return canon(w); }
 export function isFiller(w) { return FILLERS.has(w); }
+// Whether two stretches of words sound alike (the rough consonant-skeleton test used for made-up words).
+export function soundsClose(a, b) { return soundKeysClose(a, b); }
 
 // "getaway" for "get away", "cracker jack" for "crackerjack": split or join heard words so
 // they line up with the script's words.
