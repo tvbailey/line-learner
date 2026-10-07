@@ -69,7 +69,10 @@ function fixRunTogether(b, real) {
   const out = [];
   for (let j = 0; j < b.length; j++) {
     const w = b[j];
-    if (!known.has(w) && pairs.has(w)) out.push(...pairs.get(w));
+    // A dropped g either way: "frackin'" heard for the script's "fracking", or the reverse.
+    if (!known.has(w) && w.length >= 5 && known.has(w + 'g') && w.endsWith('in')) out.push(w + 'g');
+    else if (!known.has(w) && w.length >= 6 && w.endsWith('ing') && known.has(w.slice(0, -1))) out.push(w.slice(0, -1));
+    else if (!known.has(w) && pairs.has(w)) out.push(...pairs.get(w));
     // Join unless both halves are words of the line too ("a piece" for "apiece" in a line with "a").
     else if (j + 1 < b.length && known.has(w + b[j + 1]) && !(known.has(w) && known.has(b[j + 1]))) { out.push(w + b[j + 1]); j++; }
     else out.push(w);
@@ -87,7 +90,8 @@ function splitMadeUp(text) {
       if (last && last.madeUp) last.written += ' ' + written;
       else parts.push({ madeUp: true, written });
     } else {
-      for (const w of normalize(piece)) parts.push({ word: w });
+      // Filler words in the script ("Hmm.", "Uh ...") aren't required: they're dropped from what's heard too.
+      for (const w of normalize(piece)) if (!FILLERS.has(w)) parts.push({ word: w });
     }
   }
   return parts;
@@ -118,16 +122,22 @@ function alignLine(parts, b) {
     let right = b.length;
     for (let i = realBefore; i < a.length; i++) if (matchedJ[i] >= 0) { right = matchedJ[i]; break; }
     const words = [];
-    for (let j = left + 1; j < right; j++) if (!usedJ.has(j)) { words.push(b[j]); usedJ.add(j); }
-    const heardText = words.join(' ');
+    const at = [];
+    for (let j = left + 1; j < right; j++) if (!usedJ.has(j)) { words.push(b[j]); at.push(j); usedJ.add(j); }
+    let heardText = words.join(' ');
     // A real word beside the made-up one that the phone ran into it ("racklin' ash" heard as
     // "recognize"): count it as said when the heard words sound closer with it than without it.
     for (const i of [realBefore - 1, realBefore]) {
       if (i < 0 || i >= a.length || matchedJ[i] >= 0 || !heardText) continue;
-      // A heard word at that edge that sounds like the real word alone ("trash" for "ash") is a
-      // swap, not a run-together: leave the real word missing.
-      const edge = i < realBefore ? words[0] : words[words.length - 1];
-      if (soundsAlike(a[i], edge) || soundKeysClose(a[i], edge)) continue;
+      // A heard word at that edge that sounds like the real word alone ("trash" for "ash", "out"
+      // for "off") is a swap, not a run-together: leave the real word missing and hand the heard
+      // word back as extra, so the pair can be judged a probable mishearing.
+      const k = i < realBefore ? 0 : words.length - 1;
+      const edge = words[k];
+      if (soundsAlike(a[i], edge) || soundKeysClose(a[i], edge)) {
+        if (words.length > 1) { usedJ.delete(at[k]); words.splice(k, 1); at.splice(k, 1); heardText = words.join(' '); }
+        continue;
+      }
       const withWord = i < realBefore ? `${a[i]} ${p.written}` : `${p.written} ${a[i]}`;
       if (similarity(soundKey(withWord), soundKey(heardText)) > similarity(soundKey(p.written), soundKey(heardText))) absorbed.add(i);
     }

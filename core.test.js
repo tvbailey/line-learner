@@ -108,6 +108,26 @@ test('stripStale drops his previous line\'s words from the start of the next one
   assert.equal(stripStale('Read it', ''), 'Read it');
 });
 
+test('a dropped g ("frackin\'" for "fracking") still matches', () => {
+  // Phone report 7 Oct 2026, Moonshine Small: "rackin' frackin' mangy mutts".
+  assert.equal(compareLine("{Rackin'} fracking mangy mutts!", "rackin' frackin' mangy mutts").match, true);
+  assert.equal(compareLine("There's nothing here.", "there's nothin' here").match, true);
+  assert.equal(compareLine("There's nothin' here.", "there's nothing here").match, true);
+});
+
+test('a real word next to a made-up word, heard as a sound-alike, is a probable mishearing', () => {
+  // Phone report 7 Oct 2026: "Call 'em off! Bumpus!" heard "call him out of bumpus" was marked Needs work.
+  const r = compareLine("{Bumpus}! Call 'em off! {Bumpus}!", 'Bumpus. Call him out of bumpus.');
+  assert.equal(r.match, false);
+  assert.equal(r.likelyMishearing, true);
+});
+
+test('filler words written in the script ("Hmm.", "Uh ...") are not required', () => {
+  // The phone often drops them, and they're ignored in what it hears, so the script's copy must be too.
+  assert.equal(compareLine("Hmm. Here's a letter with no stamp on it.", "here's a letter with no stamp on it").match, true);
+  assert.equal(compareLine('Uh ... yeah.', 'uh yeah').match, true);
+});
+
 test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
   // Phone report 1 Oct 2026: the line was ended during the phone's own listening restart, cutting him off.
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 3200, gapMs: 2000 }), false);
