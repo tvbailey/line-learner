@@ -226,6 +226,19 @@ export function assembleTranscript(earlierSessions, currentResults) {
     .join(' ');
 }
 
+// The on-phone engine can carry his previous line's last words into the next stretch it hears
+// (muting doesn't close a stretch). Drop those words when the new text starts with them.
+export function stripStale(text, stale) {
+  const t = (text || '').trim();
+  const old = normalize(stale || '');
+  if (!old.length) return t;
+  const raw = t.split(/\s+/);
+  if (raw.length < old.length) return t;
+  const head = normalize(raw.slice(0, old.length).join(' '));
+  if (head.length !== old.length || head.some((w, i) => w !== old[i])) return t;
+  return raw.slice(old.length).join(' ');
+}
+
 // The line is finished once he has said something and then been quiet for the gap.
 // Quiet counts from when the phone last resumed listening (it can't hear him while restarting),
 // though never more than one extra gap. `endHeard` (from lineEndHeard) tunes the wait: once the

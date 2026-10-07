@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007a';
-import { parseScript } from './script.js?v=20261007a';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20261007a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007b';
+import { parseScript } from './script.js?v=20261007b';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20261007b';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -230,11 +230,16 @@ function voicesFor(kind) {
 }
 
 let speaking = false;
+let speechTurn = 0;
 // `who` picks that character's own voice when "a different voice for each character" is on.
 function speak(text, who = '') {
   return new Promise((resolve) => {
     speaking = true;
-    const done = (why) => { if (!speaking) return; speaking = false; clearTimeout(timer); if (why) log(`speech ${why}`); resolve(); };
+    // Each call finishes once, on its own: a late "end" or "interrupted" from an earlier line
+    // (one that timed out) must not mark this one finished, or this one would never resolve.
+    const turn = ++speechTurn;
+    let finished = false;
+    const done = (why) => { if (finished) return; finished = true; if (turn === speechTurn) speaking = false; clearTimeout(timer); if (why) log(`speech ${why}`); resolve(); };
     // Chrome sometimes never fires "end"; don't hang the scene waiting for it.
     const timer = setTimeout(() => done(SIM ? '' : 'timed out (no end event)'), SIM ? 300 : text.length * 90 + 3000);
     if (SIM || !('speechSynthesis' in window)) return;
@@ -294,29 +299,70 @@ function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt 
 // It is pointed at the line's made-up words only; pointing it at the whole line could make it
 // "hear" the right words when he said something else.
 const MOONSHINE = 'https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-wasm@0.1.5/dist/index.js';
-let moon = null;        // { size, mic, ready, live, stopMeter }
+let moon = null;        // { size, mic, ready, live, stopMeter, errors }
+let moonLoading = null; // { size, promise } while a model is loading, so a second request waits for it
 let moonKeyterms = [];
+// The stretch the engine is still working on. Muting doesn't close it, so after a cue it can come
+// back with his previous line's last words at its start; those are stripped (moonStale).
+let moonOpen = '';
+let moonStale = '';
 
 function engine() { return $('engine').value; }
 function moonLive() { return !SIM && moon && moon.live; }
 
-async function loadMoon() {
+function freshText(text) { return stripStale(text, moonStale); }
+// The words of the stretch he is saying right now, revised as he goes.
+function moonText(text) {
+  moonOpen = (text || '').trim();
+  if (!wantListening) return;
+  const t = freshText(text);
+  currentResults = t ? [{ final: false, text: t }] : [];
+  lastSpeechAt = Date.now();
+}
+// A stretch finished at a pause: keep it, and start the next one fresh.
+function moonLineDone(text) {
+  const t = freshText(text);
+  moonOpen = ''; moonStale = '';
+  if (!wantListening) return;
+  currentResults = [];
+  if (t) { earlierSessions.push(t); lastSpeechAt = Date.now(); }
+}
+// Repeated engine errors mid-scene: give up on Moonshine for this scene and carry on with Google,
+// including for the line he is on now.
+function moonError(err) {
+  log(`on-phone listening error: ${err.message}`);
+  if (!moon || !moon.live) return;
+  moon.errors = (moon.errors || 0) + 1;
+  if (moon.errors < 3) return;
+  log('on-phone listening failed repeatedly; switching to Google for the rest of this scene');
+  stopMoonScene();
+  if (wantListening) startListening();
+}
+
+function loadMoon() {
   const size = engine() === 'moon-small' ? 'small' : 'tiny';
-  if (moon && moon.size === size && moon.ready) return true;
+  if (moon && moon.size === size && moon.ready) return Promise.resolve(true);
+  if (moonLoading && moonLoading.size === size) return moonLoading.promise;
+  const promise = loadMoonModel(size).finally(() => { if (moonLoading && moonLoading.promise === promise) moonLoading = null; });
+  moonLoading = { size, promise };
+  return promise;
+}
+
+async function loadMoonModel(size) {
   if (moon) { try { moon.mic.close(); } catch (_) { /* already closed */ } moon = null; }
   if (!self.crossOriginIsolated) { log('on-phone listening: this page is not isolated yet (reload once); using Google'); return false; }
   const t = Date.now();
   try {
     const lib = await import(MOONSHINE);
-    const m = { size, ready: false, live: false };
+    const m = { size, ready: false, live: false, errors: 0 };
     m.mic = new lib.MicTranscriber()
       .modelArch(size === 'small' ? lib.ModelArch.SmallStreaming : lib.ModelArch.TinyStreaming)
-      .onProgress((f, file, bytes) => setStatus(`Downloading the on-phone listener: ${Math.round(f * 100)}%${bytes && bytes.total ? ` of ${Math.round(bytes.total / 1048576)} MB` : ''}`, '', 'idle'))
-      // The words of the stretch he is saying right now, revised as he goes.
-      .onText((text) => { if (!wantListening) return; currentResults = text.trim() ? [{ final: false, text }] : []; lastSpeechAt = Date.now(); })
-      // A stretch finished at a pause: keep it, and start the next one fresh.
-      .onLine((line) => { if (!wantListening) return; const text = (line.text || '').trim(); currentResults = []; if (text) { earlierSessions.push(text); lastSpeechAt = Date.now(); } })
-      .onError((err) => log(`on-phone listening error: ${err.message}`));
+      .onProgress((f, file, bytes) => { if (!running || !moon) setStatus(`Downloading the on-phone listener: ${Math.round(f * 100)}%${bytes && bytes.total ? ` of ${Math.round(bytes.total / 1048576)} MB` : ''}`, '', 'idle'); })
+      .onText(moonText)
+      .onLine((line) => moonLineDone(line.text))
+      .onError(moonError);
+    // A stretch's first words arrive as "line started", which onText doesn't carry.
+    m.mic.addListener({ onLineStarted: ({ line }) => moonText(line.text) });
     await m.mic.load();
     m.ready = true;
     moon = m;
@@ -332,14 +378,24 @@ async function loadMoon() {
 // a plain volume meter, catches sounds with no words ("Argh!").
 async function startMoonScene() {
   if (!(await loadMoon())) return false;
+  if (moon.stopping) { await moon.stopping; moon.stopping = null; }
   try {
     await moon.mic.start();
     moon.mic.mute(true);
     moon.live = true;
-  } catch (err) { log(`on-phone listening could not start the mic: ${err.message}; using Google`); return false; }
+    moon.errors = 0;
+  } catch (err) {
+    log(`on-phone listening could not start the mic: ${err.message}; using Google`);
+    // A half-started engine can hold the mic and refuse the next start: release it and reload next time.
+    try { await moon.mic.stop(); } catch (_) { /* not started */ }
+    try { moon.mic.close(); } catch (_) { /* already closed */ }
+    moon = null;
+    return false;
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const ctx = new AudioContext();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => { /* resumes on the next tap */ });
     const an = ctx.createAnalyser();
     an.fftSize = 1024;
     ctx.createMediaStreamSource(stream).connect(an);
@@ -359,7 +415,9 @@ async function startMoonScene() {
 function stopMoonScene() {
   if (!moon || !moon.live) return;
   moon.live = false;
-  try { moon.mic.mute(true); moon.mic.stop(); } catch (_) { /* already stopped */ }
+  try { moon.mic.mute(true); } catch (_) { /* already stopped */ }
+  // Remembered so a quick second Start waits for the mic to be fully released first.
+  moon.stopping = Promise.resolve(moon.mic.stop()).catch(() => { /* already stopped */ });
   if (moon.stopMeter) { moon.stopMeter(); moon.stopMeter = null; }
 }
 
@@ -369,6 +427,10 @@ function startListening() {
   if (moonLive()) {
     try { moon.mic.setKeyterms(moonKeyterms); } catch (err) { log(`on-phone listening: key words not set (${err.message})`); }
     currentResults = [];
+    moonStale = moonOpen;
+    // A phone call or another app can suspend the audio; wake it each time his turn starts.
+    const ac = moon.mic.audioContext;
+    if (ac && ac.state === 'suspended') ac.resume().then(() => log('on-phone listening: audio woken up')).catch((err) => log(`on-phone listening: audio would not wake (${err.message})`));
     moon.mic.mute(false);
     listeningSince = Date.now();
     if (onMicReady) { onMicReady(); onMicReady = null; } // the mic is already on
@@ -663,7 +725,7 @@ async function setup() {
   $('engine').onchange = () => {
     store.set('ll-engine', $('engine').value);
     // Fetch the model now, while he's still in settings, rather than at Start.
-    if (engine() !== 'google' && !running && !SIM) loadMoon().then((ok) => setStatus(ok ? 'On-phone listener ready. Tap Start.' : 'On-phone listener unavailable; using Google.', '', 'idle'));
+    if (engine() !== 'google' && !running && !SIM) loadMoon().then((ok) => { if (!running) setStatus(ok ? 'On-phone listener ready. Tap Start.' : 'On-phone listener unavailable; using Google.', '', 'idle'); });
   };
 
   const cont = document.createElement('label');

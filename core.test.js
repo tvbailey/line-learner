@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, voiceFor } from './core.js';
+import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, voiceFor } from './core.js';
 
 test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
@@ -99,6 +99,13 @@ test('a real word swapped for another beside a made-up word is not counted as sa
   assert.equal(compareLine("{racklin'} ash!", 'racklin trash').match, false);
   assert.equal(compareLine('{Consarned} fool!', 'concerned tool').match, false);
   assert.equal(compareLine('Holy {smokes}, Ralphie', 'holy smokes ralph').match, false);
+});
+
+test('stripStale drops his previous line\'s words from the start of the next one', () => {
+  // Fable's review, 7 Oct 2026: muting doesn't close the engine's open stretch, so it can carry over.
+  assert.equal(stripStale('Read it. Who turned the damper down', 'read it.'), 'Who turned the damper down');
+  assert.equal(stripStale('Who turned the damper down', 'read it'), 'Who turned the damper down');
+  assert.equal(stripStale('Read it', ''), 'Read it');
 });
 
 test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
