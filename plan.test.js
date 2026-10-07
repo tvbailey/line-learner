@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, drillSteps, trimCues } from './plan.js';
+import { planScene, drillSteps, trimCues, recordSteps } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -46,6 +46,18 @@ const planSkipping = (text) => planScene(parseScript(text).scenes[0].items, 'THE
 test('with songs skipped, everything inside a song is skipped, spoken lines included', () => {
   assert.deepEqual(planSkipping('# S\nMOTHER: Nice.\n[SONG: G]\nTHE OLD MAN: ~ ONE\nTHE OLD MAN: Oh, Peter Pan.\nMOTHER: ~ TWO\n[END SONG]\nMOTHER: Boys, breakfast!\nTHE OLD MAN: Quiet!\n'),
     ['speak:Nice.', 'speak:G', 'skip:ONE', 'skip:Oh, Peter Pan.', 'skip:TWO', 'show:songEnd', 'speak:Boys, breakfast!', 'listen:Quiet!']);
+});
+
+test('recordSteps lists the lines a run actually plays, plus his own, once each', () => {
+  const items = parseScript('# S\nA: One.\nB: Two.\nA: Three.\nTHE OLD MAN: Mine.\nB: After.\n').scenes[0].items;
+  const r = recordSteps(items, 'THE OLD MAN', { skipSongs: true, keep: 2 });
+  assert.deepEqual(r.map((s) => `${s.mine ? 'mine' : 'cue'}:${s.item.text}`), ['cue:Two.', 'cue:Three.', 'mine:Mine.']);
+});
+
+test('recordSteps includes a skipped sung line read as a cue, but not song titles', () => {
+  const items = parseScript('# S\n[SONG: G]\nMOTHER: ~ TWO\n[END SONG]\nTHE OLD MAN: Quiet!\n').scenes[0].items;
+  const r = recordSteps(items, 'THE OLD MAN', { skipSongs: true, keep: 3 });
+  assert.deepEqual(r.map((s) => `${s.mine ? 'mine' : 'cue'}:${s.item.text}`), ['cue:TWO', 'mine:Quiet!']);
 });
 
 test('with songs skipped, spoken lines after the music starts but before the singing are kept', () => {

@@ -115,7 +115,15 @@
   .role b { font-size: 1.3rem; }
   label { display: block; font-weight: 650; margin: 18px 0 8px; }
   select { width: 100%; padding: 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; }
-  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .duo { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .rec-panel { padding-top: 4px; }
+  .rec-check { border: 1px solid var(--rule); border-radius: 12px; padding: 12px; margin-top: 8px; background: var(--surface); }
+  .rec-check .controls { grid-template-columns: 1fr 1fr 1fr; }
+  .button-like { display: inline-flex; align-items: center; justify-content: center; min-height: 64px; border: 1px solid var(--rule);
+                 border-radius: 12px; padding: 8px 6px; background: var(--surface); font-weight: 650; cursor: pointer; }
+  .habit-list { padding-left: 18px; } .habit-list li { margin: 8px 0; }
+  .habit-list button { min-height: 48px; margin-left: 8px; padding: 6px 12px; }
+  .ln .mark-right { display: block; margin-top: 8px; }
   .duo button { min-height: 64px; }
   .duo button[aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); padding: 9px 13px; }
   .duo button[aria-pressed="true"]::before { content: "\2713\00a0"; font-weight: 900; }
@@ -163,11 +171,30 @@
     <p id="lastResult" class="badge"></p>
   </div>
 
-  <div class="controls">
+  <div class="controls" id="runControls">
     <button id="start" class="primary wide">Start</button>
     <button id="pause">Pause</button>
     <button id="repeat">Repeat cue</button>
     <button id="lineBtn">Line</button>
+  </div>
+  <div id="recPanel" class="rec-panel" hidden>
+    <p id="recInfo" class="note"></p>
+    <div class="controls">
+      <button id="recNext" class="primary wide">Next</button>
+      <button id="recRetake">Retake</button>
+      <button id="recPlay">Play</button>
+      <button id="recSkip">Skip</button>
+      <button id="recBack">Back</button>
+      <button id="recDone">Done</button>
+    </div>
+    <div id="recCheck" class="rec-check" hidden>
+      <p id="recCheckText"></p>
+      <div class="controls">
+        <button id="recLearn" class="primary">That's the phone</button>
+        <button id="recRedo">Retake</button>
+        <button id="recKeep">Keep and go on</button>
+      </div>
+    </div>
   </div>
   <div id="sim"><input id="simText" placeholder="Type what you would say" aria-label="What you would say"><button id="simSay">Say</button></div>
   <p class="voice-hint">Need a prompt? Say <strong>"line."</strong> Say "pause", "resume" or "repeat" any time.</p>
@@ -186,8 +213,9 @@
   <div class="duo" role="group" aria-labelledby="modeLabel">
     <button type="button" data-mode="run" aria-pressed="true">Run the scene</button>
     <button type="button" data-mode="drill" aria-pressed="false">Made-up words drill</button>
+    <button type="button" data-mode="record" aria-pressed="false">Record voices</button>
   </div>
-  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="drill">Made-up words drill</option></select>
+  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="drill">Made-up words drill</option><option value="record">Record voices</option></select>
 
   <details id="settings">
     <summary>Rehearsal settings</summary>
@@ -208,6 +236,20 @@
     <label for="voice">Voice for the other parts (when the box above is off)</label>
     <select id="voice"></select>
     <label id="localWrap" class="setting" hidden><input id="local" type="checkbox"><span>Try on-phone listening<small class="note">Experimental; keeps audio off Google's servers if it works</small></span></label>
+  </details>
+
+  <details id="voicesBox">
+    <summary>Recorded voices and phone habits</summary>
+    <p id="voicesCount" class="note"></p>
+    <p>Recordings stay on this phone. <b>Back up</b> after a recording session: it opens the Share menu so you can send the file to yourself (Gmail or Drive). <b>Restore</b> loads a backup file back in.</p>
+    <div class="controls">
+      <button id="backup">Back up recordings</button>
+      <label class="button-like" for="restoreFile">Restore</label>
+    </div>
+    <input id="restoreFile" type="file" accept=".txt,.json,text/plain,application/json" hidden>
+    <h3>Phone habits</h3>
+    <p class="note">Words the phone hears wrong when you say a line right. Each counts only in its own line and spot, and only with the listener it was learned on.</p>
+    <ul id="habitList" class="habit-list"></ul>
   </details>
 
   <details>
@@ -247,6 +289,6 @@
     <p class="sub">The phone only knows if they sound close.<br>You are the judge of exact.</p>
   </div>
 </div>
-<script type="module" src="app.js?v=20261007c"></script>
+<script type="module" src="app.js?v=20261007d"></script>
 </body>
 </html>

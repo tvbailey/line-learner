@@ -1,8 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007c';
-import { parseScript } from './script.js?v=20261007c';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20261007c';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007d';
+import { parseScript } from './script.js?v=20261007d';
+import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261007d';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261007d';
+import * as voices from './voices.js?v=20261007d';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -45,8 +47,9 @@ function log(msg) {
 }
 
 // The turn band: a big heading that always sits in the same place, saying whose turn it is.
-const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM' };
+const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM', rec: 'RECORDING' };
 const TURN_ICON = {
+  rec: '<circle cx="12" cy="12" r="6" fill="currentColor"/>',
   idle: '<circle cx="12" cy="12" r="9"/>',
   cue: '<path d="M3 9v6h4l5 4V5L7 9H3zM16 8q5 4 0 8"/>',
   you: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
@@ -122,8 +125,11 @@ function loadScriptText(text, source) {
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
   const drill = $('mode').value === 'drill';
-  // The drill takes every line with made-up words, songs included.
-  steps = drill ? drillSteps(planScene(scene.items, me))
+  const recording = $('mode').value === 'record';
+  // The drill takes every line with made-up words, songs included. Record mode takes the lines a
+  // run would read aloud at these settings, plus his own.
+  if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
+  else steps = drill ? drillSteps(planScene(scene.items, me))
     : trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
@@ -154,6 +160,19 @@ function renderScript() {
     }
     $('script').append(div);
   });
+  markRecorded();
+}
+
+// Marks the lines that have a recorded voice (in any mode), so he can see what's left to record.
+async function markRecorded() {
+  const shown = steps.map((st, i) => ({ st, i })).filter(({ st }) => st.item.kind === 'line');
+  for (const { st, i } of shown) {
+    let clip = null;
+    try { clip = await voices.getClip(st.item.id); } catch (_) { return; }
+    const el = $('ln' + i);
+    if (!el || el.querySelector('.rec-mark')) continue;
+    if (voices.clipFits(clip, st.item)) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
+  }
 }
 
 function highlight(i) {
@@ -168,11 +187,12 @@ function highlight(i) {
   if (steps[i]) showOnStage(steps[i], steps[i + 1]);
 }
 
-function showHeard(i, heard, result, prompted, phoneRestarts = 0) {
+function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, expected = '') {
   const el = $('ln' + i);
   const ok = result.match && !prompted;
   let kind = ok ? 'ok' : 'bad';
   let note = heard ? `Heard: "${heard}"` : 'Heard: a sound (no words needed for this line)';
+  if (result.habitUsed) note += ` (a phone habit you taught it was allowed${result.habitUsed > 1 ? `, ${result.habitUsed} of them` : ''})`;
   if (prompted) note += ' (you asked for "line")';
   if (result.restarted) note += ' (you restarted, then got it)';
   if (result.missing.length || result.extra.length) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
@@ -192,6 +212,33 @@ function showHeard(i, heard, result, prompted, phoneRestarts = 0) {
     row.className = 'heard ' + (m.close ? 'ok' : 'check');
     row.textContent = `Script: ${m.written}  |  Phone heard: ${m.heard || '(nothing)'}  |  ${m.close ? '✓ sounds close' : '? check this one'}`;
     el.append(row);
+  }
+  // He knows he said it right: mark it so, and teach the phone's habit for this line.
+  if (!ok && !prompted && item && heard) {
+    const btn = document.createElement('button');
+    btn.className = 'mark-right';
+    btn.textContent = 'I said it right';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const spans = learnable(diffSpans(expected, heard));
+      let msg = 'Marked right. Nothing to learn: the phone missed words rather than hearing them wrong.';
+      try {
+        if (spans.length) {
+          await voices.addHabits(item, runEngine, spans);
+          voices.askToKeep();
+          msg = `Learned for this line: the phone hears ${spans.map((s) => `"${s.heard.join(' ')}" for "${s.written.join(' ')}"`).join(', ')}.`;
+        }
+      } catch (err) { msg = `Marked right, but the habit could not be saved: ${err.message}`; }
+      mark.className = 'badge ok result';
+      mark.textContent = '✓ You said it right';
+      const done = document.createElement('span');
+      done.className = 'heard ok';
+      done.textContent = msg;
+      btn.replaceWith(done);
+      log(`line ${i}: he says it was right; ${spans.length ? `learned ${spans.length} habit(s) for ${runEngine}` : 'nothing to learn'}`);
+      refreshVoicesBox();
+    };
+    el.append(btn);
   }
 }
 
@@ -486,14 +533,37 @@ function stopListening() {
 let running = false;
 let paused = false;
 let lastCue = '';
+let lastCueItem = null;
 let tapCommand = null;
+// Recorded voices for the scene being run (line id -> clip), and which listener this run uses,
+// which is what learned phone habits are filed under.
+let sceneClips = new Map();
+let runEngine = 'google';
 
 function gapMs() { return Number($('gap').value) * 1000; }
 
-async function sayOther(text, who = '') {
+// Reads someone else's line: their recorded voice if there is one for this exact line, otherwise
+// the phone's voice. Listening is off until it has finished playing.
+async function sayOther(text, who = '', item = null) {
   stopListening();
   setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
+  const clip = item && sceneClips.get(item.id);
+  if (clip) {
+    try { await voices.playClip(clip); return; }
+    catch (err) { log(`recorded voice failed (${err.message}); using the phone's voice`); }
+  }
   await speak(cleanText(stripDirections(text)), who);
+}
+
+async function loadSceneClips() {
+  sceneClips = new Map();
+  let cues = 0;
+  for (const st of steps) {
+    if (st.item.kind !== 'line' || st.action === 'listen' || st.action === 'show') continue;
+    cues++;
+    try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item)) sceneClips.set(st.item.id, c); } catch (_) { /* no storage */ }
+  }
+  return { cues, recorded: sceneClips.size };
 }
 
 // Start listening for his line. The phone's microphone takes a moment to come on and words said
@@ -542,7 +612,9 @@ function awaitMyLine(expected, soundOnly = false) {
         const text = cmd === 'line' ? promptText(expected, ++promptLevel) : lastCue;
         log(cmd === 'line' ? `prompt level ${promptLevel}` : 'repeating the cue');
         stopListening();
-        await speak(text);
+        const clip = cmd === 'repeat' && lastCueItem && sceneClips.get(lastCueItem.id);
+        if (clip) await voices.playClip(clip).catch(() => speak(text));
+        else await speak(text);
         resetHeard();
         listenForLine();
         busy = false;
@@ -593,36 +665,235 @@ function showSummary() {
   box.scrollIntoView({ behavior: 'smooth' });
 }
 
+// ---------- Record mode ----------
+// Steps through the lines worth recording; one person reads each, and a tap on Next saves it.
+// Each take is saved before moving on, a retake keeps the old one until the new one is saved,
+// and it starts where they left off. His own lines are checked by the on-phone listener so he
+// can teach it the words it hears wrong.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let recTap = null;
+function recWait() { return new Promise((resolve) => { recTap = resolve; }); }
+const REC_BUTTONS = ['recNext', 'recRetake', 'recPlay', 'recSkip', 'recBack', 'recDone', 'recLearn', 'recRedo', 'recKeep'];
+
+let learner = null; // { key, tr }: a listener for checking his recorded lines
+async function transcribeClip(clip, key, item) {
+  if (!self.crossOriginIsolated) throw new Error('the page needs a reload first');
+  const lib = await import(MOONSHINE);
+  if (!learner || learner.key !== key) {
+    if (learner) { try { learner.tr.close(); } catch (_) { /* closed */ } }
+    setStatus('Getting the listener ready to check your take...', '', 'rec');
+    learner = { key, tr: await lib.Transcriber.load({ language: 'en', modelArch: key === 'moon-small' ? lib.ModelArch.SmallStreaming : lib.ModelArch.TinyStreaming }) };
+  }
+  try { learner.tr.setKeyterms(madeUpWords(item.text)); } catch (_) { /* biasing unavailable */ }
+  // Decoding into a 16 kHz context gives the samples the listener expects.
+  const buf = await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(await clip.blob.arrayBuffer());
+  const out = learner.tr.transcribe(buf.getChannelData(0), { sampleRate: buf.sampleRate });
+  return out.lines.map((l) => l.text).join(' ').trim();
+}
+
+// After one of his own takes: what the phone heard, and a chance to teach it. Returns 'next',
+// 'redo' or 'done'.
+async function checkMyTake(item, clip) {
+  const key = engine() === 'google' ? null : engine();
+  if (!key) { log('record: your take was saved but not checked (checking uses "Listen with: This phone")'); return 'next'; }
+  setStatus('Checking what the phone hears...', '', 'rec');
+  let heard;
+  try { heard = await transcribeClip(clip, key, item); }
+  catch (err) { log(`record: could not check your take: ${err.message}`); setStatus('Could not check that take. It is saved.', '', 'problem'); await sleep(1500); return 'next'; }
+  const expected = stripDirections(item.text);
+  const fixed = applyHabits(expected, heard, await voices.getHabits(item, key).catch(() => []));
+  const r = compareLine(expected, fixed.text);
+  log(`record: your line checked with ${key}: ${r.match ? 'matched' : 'differs'} | heard "${heard}"`);
+  const spans = r.match ? [] : learnable(diffSpans(expected, heard));
+  $('recCheck').hidden = false;
+  $('recLearn').hidden = !spans.length;
+  if (r.match) $('recCheckText').textContent = `✓ The phone heard it right: "${heard}"`;
+  else if (spans.length) $('recCheckText').textContent = `The phone heard ${spans.map((s) => `"${s.heard.join(' ')}" for "${s.written.join(' ')}"`).join(', ')}. If you said it right, tap "That's the phone" and it will know next time. If you slipped, Retake.`;
+  else $('recCheckText').textContent = `The phone heard: "${heard || '(nothing)'}". It missed words rather than hearing them wrong, so there's nothing to learn. Retake, or keep it and go on.`;
+  setStatus(r.match ? 'Your line came through right.' : 'Was that the phone, or a slip?', '', 'rec');
+  try {
+    for (;;) {
+      const act = await recWait();
+      if (act === 'recLearn' && spans.length) {
+        await voices.addHabits(item, key, spans);
+        log(`record: learned ${spans.length} habit(s) for ${key}`);
+        return 'next';
+      }
+      if (act === 'recRedo' || act === 'recRetake') return 'redo';
+      if (act === 'recKeep' || act === 'recNext' || act === 'recSkip') return 'next';
+      if (act === 'recDone') return 'done';
+      if (act === 'recPlay') await voices.playClip(clip).catch(() => {});
+    }
+  } finally { $('recCheck').hidden = true; }
+}
+
+async function runRecord() {
+  if (running) return;
+  running = true;
+  renderScript();
+  const scene = script.scenes[Number($('scene').value) || 0];
+  const list = steps.filter((st) => st.item.kind === 'line');
+  if (!list.length) { setStatus('Nothing to record in this scene at these settings.', '', 'problem'); running = false; return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch (err) { setStatus('Microphone blocked. Allow it in Chrome settings.', '', 'problem'); log(`record: microphone failed: ${err.message}`); running = false; return; }
+  await keepAwake();
+  voices.audio();
+  log(`record: storage protected from automatic clearing: ${await voices.askToKeep()}`);
+  const have = await Promise.all(list.map((st) => voices.getClip(st.item.id).then((c) => voices.clipFits(c, st.item)).catch(() => false)));
+  let i = have.findIndex((h) => !h);
+  if (i < 0) i = 0;
+  log(`record start: ${scene.title}; ${have.filter(Boolean).length} of ${list.length} lines already recorded; starting at line ${i + 1}`);
+  $('runControls').hidden = true;
+  $('recPanel').hidden = false;
+  let take = null;
+  // Locking the phone or switching apps drops the take in progress; it starts again on return.
+  const onHide = () => { if (document.hidden && take) { take.cancel(); take = null; log('record: the phone was locked or switched away; that take was dropped'); if (recTap) { const r = recTap; recTap = null; r('dropped'); } } };
+  document.addEventListener('visibilitychange', onHide);
+  try {
+    while (i < list.length) {
+      const st = list[i];
+      highlight(steps.indexOf(st));
+      const reader = st.action === 'listen' ? 'You read your own line' : (voiceFor(st.item.who, 1).kind === 'man' ? `You read ${st.item.who}` : `Your daughter reads ${st.item.who}`);
+      $('recInfo').textContent = `Line ${i + 1} of ${list.length}. ${reader}, then tap Next.${have[i] ? ' (Already recorded; Next replaces it.)' : ''}`;
+      setStatus(`Recording ${st.item.who}. Tap Next when done.`, '', 'rec');
+      if (document.hidden) await new Promise((r) => document.addEventListener('visibilitychange', r, { once: true }));
+      take = voices.startTake(stream);
+      const act = await recWait();
+      const t = take; take = null;
+      if (act === 'dropped' || !t) continue;
+      if (act !== 'recNext') {
+        t.cancel();
+        if (act === 'recSkip') i++;
+        else if (act === 'recBack') i = Math.max(0, i - 1);
+        else if (act === 'recDone') break;
+        else if (act === 'recPlay') {
+          const c = await voices.getClip(st.item.id).catch(() => null);
+          if (voices.clipFits(c, st.item)) { setStatus('Playing the saved take...', '', 'cue'); await voices.playClip(c).catch(() => {}); }
+          else { setStatus('No saved take for this line yet.', '', 'problem'); await sleep(1200); }
+        }
+        continue; // Retake, Play and the rest start this line again
+      }
+      const blob = await t.stop();
+      if (blob.size < 1500 || Date.now() - t.startedAt < 600) { setStatus('Nothing was recorded. Read the line again.', '', 'problem'); await sleep(1500); continue; }
+      const clip = { id: st.item.id, text: st.item.text, who: st.item.who, scene: scene.title, version: script.version || '', mime: blob.type, blob, savedAt: Date.now() };
+      try { await voices.putClip(clip); }
+      catch (err) { setStatus(`Could not save that take (${err.message}). Read it again.`, '', 'problem'); log(`record: save failed: ${err.message}`); await sleep(2000); continue; }
+      have[i] = true;
+      log(`record: saved line ${i + 1} of ${list.length} (${st.item.who}, ${Math.round(blob.size / 1024)} KB)`);
+      markRecorded();
+      if (st.action === 'listen') {
+        const next = await checkMyTake(st.item, clip);
+        if (next === 'redo') continue;
+        if (next === 'done') break;
+      }
+      i++;
+    }
+  } finally {
+    if (take) take.cancel();
+    document.removeEventListener('visibilitychange', onHide);
+    stream.getTracks().forEach((tr) => tr.stop());
+    $('recPanel').hidden = true;
+    $('recCheck').hidden = true;
+    $('runControls').hidden = false;
+    running = false;
+  }
+  const done = have.filter(Boolean).length;
+  log(`record end: ${done} of ${list.length} lines recorded`);
+  setStatus(`Recorded ${done} of ${list.length} lines.${done ? ' Back up in "Recorded voices" below.' : ''}`, '', 'done');
+  refreshVoicesBox();
+}
+
+// ---------- recorded voices and phone habits, in settings ----------
+async function refreshVoicesBox() {
+  let clips = [], habits = [];
+  try { clips = await voices.allClips(); habits = await voices.allHabits(); } catch (err) { $('voicesCount').textContent = `Storage unavailable: ${err.message}`; return; }
+  const n = habits.reduce((s, h) => s + h.items.length, 0);
+  $('voicesCount').textContent = `${clips.length} recorded line${clips.length === 1 ? '' : 's'} and ${n} phone habit${n === 1 ? '' : 's'} on this phone.`;
+  const ul = $('habitList');
+  ul.innerHTML = '';
+  for (const h of habits) {
+    h.items.forEach((sp, k) => {
+      const li = document.createElement('li');
+      li.textContent = `"${sp.heard.join(' ')}" for "${sp.written.join(' ')}" in "${cleanText(h.text).slice(0, 60)}" (${h.engine})`;
+      const del = document.createElement('button');
+      del.textContent = 'Forget';
+      del.onclick = async () => { await voices.removeHabit(h.key, k); log(`habit forgotten: "${sp.heard.join(' ')}" for "${sp.written.join(' ')}"`); refreshVoicesBox(); };
+      li.append(del);
+      ul.append(li);
+    });
+  }
+  if (!n) { const li = document.createElement('li'); li.className = 'note'; li.textContent = 'None yet.'; ul.append(li); }
+}
+
+async function backupVoices() {
+  try {
+    const { file, clips, habits } = await voices.backupFile(script && script.version);
+    log(`backup: ${clips} recordings, ${habits} habit entries, ${Math.round(file.size / 1024)} KB`);
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Line Runner voices backup' }); setStatus('Backup shared.', '', 'idle'); return; }
+      catch (err) { if (err.name === 'AbortError') { setStatus('Backup not sent.', '', 'idle'); return; } log(`backup: share failed (${err.message}); saving instead`); }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    setStatus('Backup saved to Downloads.', '', 'idle');
+  } catch (err) { setStatus(`Backup failed: ${err.message}`, '', 'problem'); log(`backup failed: ${err.message}`); }
+}
+
+async function restoreVoices(file) {
+  try {
+    const r = await voices.restoreFile(file);
+    log(`restore: ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries are now on this phone`);
+    setStatus(`Restored ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries.`, '', r.clips === r.clipsInFile ? 'idle' : 'problem');
+    refreshVoicesBox();
+    if (!running) renderScript();
+  } catch (err) { setStatus(`Restore failed: ${err.message}`, '', 'problem'); log(`restore failed: ${err.message}`); }
+}
+
 async function runScene() {
   if (running) return;
+  if ($('mode').value === 'record') return runRecord();
   running = true; paused = false; restarts = 0; madeUpSeen = [];
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
+  voices.audio(); // wake the audio player on this tap, for recorded voices
   let listenWith = 'Google';
+  runEngine = 'google';
   if (!SIM && engine() !== 'google') {
     setStatus('Getting the on-phone listener ready...', '', 'idle');
-    listenWith = (await startMoonScene()) ? `Moonshine ${moon.size} on the phone` : 'Google (Moonshine unavailable)';
+    const ok = await startMoonScene();
+    listenWith = ok ? `Moonshine ${moon.size} on the phone` : 'Google (Moonshine unavailable)';
+    if (ok) runEngine = `moon-${moon.size}`;
   }
-  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}`);
+  const rec = await loadSceneClips();
+  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}; recorded voices for ${rec.recorded} of ${rec.cues} cue lines`);
   for (let i = 0; i < steps.length && running; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
-    if (action === 'cue') { if ($('mode').value === 'drill') highlight(i); lastCue = stripDirections(item.text); await sayOther(item.text, item.who); continue; }
+    if (action === 'cue') { if ($('mode').value === 'drill') highlight(i); lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
       lastCue = stripDirections(item.text);
-      await sayOther(item.text, item.who);
+      lastCueItem = item;
+      await sayOther(item.text, item.who, item);
       continue;
     }
     const expected = stripDirections(item.text);
     const soundOnly = isSoundOnly(expected);
     const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly);
-    const result = soundOnly ? { match: true, missing: [], extra: [], likelyMishearing: false } : compareLine(expected, heard);
-    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''}${phoneRestarts ? `, phone stopped listening ${phoneRestarts}x mid-line` : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
+    // Habits he taught the phone for this line and this listener are turned back into script words first.
+    const habits = soundOnly ? [] : await voices.getHabits(item, runEngine).catch(() => []);
+    const fixed = habits.length ? applyHabits(expected, heard, habits) : { text: heard, used: 0 };
+    const result = soundOnly ? { match: true, missing: [], extra: [], likelyMishearing: false } : compareLine(expected, fixed.text);
+    result.habitUsed = fixed.used;
+    log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.habitUsed ? `, phone habit allowed x${result.habitUsed}` : ''}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''}${phoneRestarts ? `, phone stopped listening ${phoneRestarts}x mid-line` : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
     if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
-    showHeard(i, heard, result, prompted, phoneRestarts);
+    showHeard(i, heard, result, prompted, phoneRestarts, item, expected);
     if (result.madeUp && result.madeUp.length) {
       madeUpSeen.push(...result.madeUp);
       // In the drill, flash the made-up words big right after he says them, to check himself.
@@ -678,7 +949,8 @@ async function setup() {
   $('before').onchange = () => { store.set('ll-before', $('before').value); if (!running) renderScript(); };
   $('perCharacter').checked = store.get('ll-per-character') !== 'off';
   $('perCharacter').onchange = () => store.set('ll-per-character', $('perCharacter').checked ? 'on' : 'off');
-  $('mode').value = store.get('ll-mode') === 'drill' ? 'drill' : 'run';
+  const savedMode = store.get('ll-mode');
+  $('mode').value = savedMode === 'drill' || savedMode === 'record' ? savedMode : 'run';
   // Two big buttons stand in for the mode list; the list itself keeps the value.
   const syncMode = () => document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === $('mode').value));
   $('mode').onchange = () => { store.set('ll-mode', $('mode').value); syncMode(); if (!running) renderScript(); };
@@ -719,6 +991,10 @@ async function setup() {
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
   $('lineBtn').onclick = () => { tapCommand = 'line'; };
   $('copy').onclick = copyReport;
+  for (const id of REC_BUTTONS) $(id).onclick = () => { if (recTap) { const r = recTap; recTap = null; r(id); } };
+  $('backup').onclick = backupVoices;
+  $('restoreFile').onchange = () => { const f = $('restoreFile').files[0]; if (f) restoreVoices(f); $('restoreFile').value = ''; };
+  refreshVoicesBox();
 
   const savedEngine = store.get('ll-engine');
   if (savedEngine && [...$('engine').options].some((o) => o.value === savedEngine)) $('engine').value = savedEngine;

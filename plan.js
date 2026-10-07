@@ -51,6 +51,20 @@ export function drillSteps(steps) {
   return out;
 }
 
+// Record mode: the lines worth recording at these settings, in order and once each. That's every
+// line a run would read aloud (including a skipped sung line read as a cue), plus his own lines.
+export function recordSteps(items, me, { skipSongs = false, keep = 0 } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const st of trimCues(planScene(items, me, { skipSongs }), keep)) {
+    if (st.item.kind !== 'line' || seen.has(st.item.id)) continue;
+    if (st.action !== 'speak' && st.action !== 'cue' && st.action !== 'listen') continue;
+    seen.add(st.item.id);
+    out.push({ item: st.item, mine: st.action === 'listen' });
+  }
+  return out;
+}
+
 // Jump ahead: of the lines read aloud before each of the actor's lines, keep only the last
 // `keep` (0 keeps everything). Lines after his last line are skipped.
 export function trimCues(steps, keep) {
