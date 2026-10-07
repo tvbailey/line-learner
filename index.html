@@ -7,6 +7,9 @@
 <meta name="theme-color" content="#14151b">
 <title>Line Runner</title>
 <link rel="manifest" href="manifest.webmanifest">
+<!-- Turns on cross-origin isolation, which the on-phone listening model (Moonshine) needs and
+     GitHub Pages can't switch on with headers. The page may reload itself once the first time. -->
+<script src="coi-serviceworker.js"></script>
 <script>
   // Apply a remembered theme before the first paint so the page never flashes the wrong one.
   try { var t = localStorage.getItem('ll-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
@@ -188,6 +191,13 @@
 
   <details id="settings">
     <summary>Rehearsal settings</summary>
+    <label for="engine">Listen with</label>
+    <select id="engine">
+      <option value="google">Google (the phone's speech service)</option>
+      <option value="moon-tiny">This phone: Moonshine Tiny (49 MB download)</option>
+      <option value="moon-small">This phone: Moonshine Small (bigger, more accurate)</option>
+    </select>
+    <p id="engineNote" class="note">Moonshine keeps the mic on (no dings) and nothing leaves the phone. It downloads once.</p>
     <label class="setting"><input id="skipSongs" type="checkbox" checked><span>Dialogue only<small class="note">Skip everything inside songs</small></span></label>
     <label for="before">Read before each of your lines</label>
     <select id="before"><option value="1">1 line</option><option value="2">2 lines</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="0">everything</option></select>
@@ -237,6 +247,6 @@
     <p class="sub">The phone only knows if they sound close.<br>You are the judge of exact.</p>
   </div>
 </div>
-<script type="module" src="app.js?v=20261004d"></script>
+<script type="module" src="app.js?v=20261007a"></script>
 </body>
 </html>

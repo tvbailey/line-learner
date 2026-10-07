@@ -1,8 +1,8 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261004d';
-import { parseScript } from './script.js?v=20261004d';
-import { planScene, drillSteps, trimCues } from './plan.js?v=20261004d';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007a';
+import { parseScript } from './script.js?v=20261007a';
+import { planScene, drillSteps, trimCues } from './plan.js?v=20261007a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -288,9 +288,92 @@ let restartPending = false;
 let onMicReady = null;
 function resetHeard() { earlierSessions = []; currentResults = []; lastSpeechAt = 0; lastSoundAt = 0; listeningSince = 0; midLineRestarts = 0; restartPending = false; }
 
+// ---------- on-phone listening (Moonshine) ----------
+// Moonshine runs a speech model on the phone itself. The mic stays on for the whole scene (no
+// beeps, no restarts, nothing lost in a gap) and is only muted while the other parts are read.
+// It is pointed at the line's made-up words only; pointing it at the whole line could make it
+// "hear" the right words when he said something else.
+const MOONSHINE = 'https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-wasm@0.1.5/dist/index.js';
+let moon = null;        // { size, mic, ready, live, stopMeter }
+let moonKeyterms = [];
+
+function engine() { return $('engine').value; }
+function moonLive() { return !SIM && moon && moon.live; }
+
+async function loadMoon() {
+  const size = engine() === 'moon-small' ? 'small' : 'tiny';
+  if (moon && moon.size === size && moon.ready) return true;
+  if (moon) { try { moon.mic.close(); } catch (_) { /* already closed */ } moon = null; }
+  if (!self.crossOriginIsolated) { log('on-phone listening: this page is not isolated yet (reload once); using Google'); return false; }
+  const t = Date.now();
+  try {
+    const lib = await import(MOONSHINE);
+    const m = { size, ready: false, live: false };
+    m.mic = new lib.MicTranscriber()
+      .modelArch(size === 'small' ? lib.ModelArch.SmallStreaming : lib.ModelArch.TinyStreaming)
+      .onProgress((f, file, bytes) => setStatus(`Downloading the on-phone listener: ${Math.round(f * 100)}%${bytes && bytes.total ? ` of ${Math.round(bytes.total / 1048576)} MB` : ''}`, '', 'idle'))
+      // The words of the stretch he is saying right now, revised as he goes.
+      .onText((text) => { if (!wantListening) return; currentResults = text.trim() ? [{ final: false, text }] : []; lastSpeechAt = Date.now(); })
+      // A stretch finished at a pause: keep it, and start the next one fresh.
+      .onLine((line) => { if (!wantListening) return; const text = (line.text || '').trim(); currentResults = []; if (text) { earlierSessions.push(text); lastSpeechAt = Date.now(); } })
+      .onError((err) => log(`on-phone listening error: ${err.message}`));
+    await m.mic.load();
+    m.ready = true;
+    moon = m;
+    log(`on-phone listening: Moonshine ${size} ready in ${((Date.now() - t) / 1000).toFixed(1)} s`);
+    return true;
+  } catch (err) {
+    log(`on-phone listening failed to load: ${err.message}; using Google`);
+    return false;
+  }
+}
+
+// Turns the mic on for the scene (muted until his first line). A second look at the mic,
+// a plain volume meter, catches sounds with no words ("Argh!").
+async function startMoonScene() {
+  if (!(await loadMoon())) return false;
+  try {
+    await moon.mic.start();
+    moon.mic.mute(true);
+    moon.live = true;
+  } catch (err) { log(`on-phone listening could not start the mic: ${err.message}; using Google`); return false; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext();
+    const an = ctx.createAnalyser();
+    an.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    const timer = setInterval(() => {
+      an.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += v * v;
+      if (wantListening && Math.sqrt(sum / buf.length) > 0.02) lastSoundAt = Date.now();
+    }, 50);
+    moon.stopMeter = () => { clearInterval(timer); ctx.close(); stream.getTracks().forEach((tr) => tr.stop()); };
+  } catch (err) { log(`on-phone listening: no volume meter (${err.message}); sound-only lines need a word`); }
+  log(`on-phone listening: mic on for the scene (Moonshine ${moon.size})`);
+  return true;
+}
+
+function stopMoonScene() {
+  if (!moon || !moon.live) return;
+  moon.live = false;
+  try { moon.mic.mute(true); moon.mic.stop(); } catch (_) { /* already stopped */ }
+  if (moon.stopMeter) { moon.stopMeter(); moon.stopMeter = null; }
+}
+
 function startListening() {
   wantListening = true;
   if (SIM) return;
+  if (moonLive()) {
+    try { moon.mic.setKeyterms(moonKeyterms); } catch (err) { log(`on-phone listening: key words not set (${err.message})`); }
+    currentResults = [];
+    moon.mic.mute(false);
+    listeningSince = Date.now();
+    if (onMicReady) { onMicReady(); onMicReady = null; } // the mic is already on
+    return;
+  }
   if (!Recognition) { setStatus('This browser cannot listen. Use Chrome.', '', 'problem'); return; }
   rec = new Recognition();
   rec.lang = 'en-US';
@@ -333,6 +416,7 @@ function startListening() {
 function stopListening() {
   wantListening = false;
   onMicReady = null;
+  if (moonLive()) { try { moon.mic.mute(true); } catch (_) { /* stopped */ } }
   if (rec) { rec.onend = null; try { rec.abort(); } catch (_) { /* already stopped */ } rec = null; }
 }
 
@@ -368,6 +452,7 @@ function awaitMyLine(expected, soundOnly = false) {
     let promptLevel = 0;
     let busy = false;
     let phoneRestarts = 0;
+    moonKeyterms = madeUpWords(expected);
     resetHeard();
     listenForLine();
     const tick = setInterval(async () => {
@@ -452,7 +537,12 @@ async function runScene() {
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
-  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; continuous ${$('continuous').checked}`);
+  let listenWith = 'Google';
+  if (!SIM && engine() !== 'google') {
+    setStatus('Getting the on-phone listener ready...', '', 'idle');
+    listenWith = (await startMoonScene()) ? `Moonshine ${moon.size} on the phone` : 'Google (Moonshine unavailable)';
+  }
+  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}`);
   for (let i = 0; i < steps.length && running; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
@@ -478,6 +568,7 @@ async function runScene() {
     }
   }
   stopListening();
+  stopMoonScene();
   running = false;
   log(`scene end; listening restarts: ${restarts}`);
   $('context').open = true;
@@ -510,7 +601,7 @@ async function copyReport() {
     `when: ${new Date().toString()}`,
     `browser: ${navigator.userAgent}`,
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
-    `settings: wait ${$('gap').value}s, continuous ${$('continuous').checked}, on-phone ${$('local').checked}`,
+    `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}`,
     `listening restarts: ${restarts}`,
     '', ...logLines,
   ].join('\n');
@@ -566,6 +657,14 @@ async function setup() {
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
   $('lineBtn').onclick = () => { tapCommand = 'line'; };
   $('copy').onclick = copyReport;
+
+  const savedEngine = store.get('ll-engine');
+  if (savedEngine && [...$('engine').options].some((o) => o.value === savedEngine)) $('engine').value = savedEngine;
+  $('engine').onchange = () => {
+    store.set('ll-engine', $('engine').value);
+    // Fetch the model now, while he's still in settings, rather than at Start.
+    if (engine() !== 'google' && !running && !SIM) loadMoon().then((ok) => setStatus(ok ? 'On-phone listener ready. Tap Start.' : 'On-phone listener unavailable; using Google.', '', 'idle'));
+  };
 
   const cont = document.createElement('label');
   cont.className = 'setting';
