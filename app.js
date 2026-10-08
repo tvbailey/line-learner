@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007e';
-import { parseScript } from './script.js?v=20261007e';
-import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261007e';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261007e';
-import * as voices from './voices.js?v=20261007e';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007f';
+import { parseScript } from './script.js?v=20261007f';
+import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261007f';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261007f';
+import * as voices from './voices.js?v=20261007f';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -676,6 +676,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let recTap = null;
 function recWait() { return new Promise((resolve) => { recTap = resolve; }); }
 const REC_BUTTONS = ['recNext', 'recRetake', 'recPlay', 'recSkip', 'recBack', 'recDone', 'recLearn', 'recRedo', 'recKeep'];
+// While a take is being saved or checked, taps can't do anything: show it, rather than let a tap
+// vanish (Thomas, 7 Oct 2026: "I'd hit next and it like didn't respond").
+function recBusy(on, label = '') {
+  for (const id of REC_BUTTONS) $(id).disabled = on;
+  $('recNext').textContent = on ? label : 'Next';
+}
 
 let learner = null; // { key, tr }: a listener for checking his recorded lines
 async function transcribeClip(clip, key, item) {
@@ -711,6 +717,7 @@ async function checkMyTake(item, clip) {
   if (engine() === 'google') { log('record: your take was not checked (checking uses "Listen with: This phone")'); return 'keep'; }
   const key = `${engine()}@${MOON_REV}`;
   setStatus('Checking what the phone hears...', '', 'rec');
+  recBusy(true, 'Checking...');
   let heard;
   try { heard = await transcribeClip(clip, engine(), item); }
   catch (err) { log(`record: could not check your take: ${err.message}`); setStatus('Could not check that take; keeping it.', '', 'problem'); await sleep(1500); return 'keep'; }
@@ -726,6 +733,9 @@ async function checkMyTake(item, clip) {
   else if (spans.length) $('recCheckText').textContent = `The phone heard ${spans.map((s) => `"${s.heard.join(' ')}" for "${s.written.join(' ')}"`).join(', ')}. If you said it right, tap "That's the phone" and it will know next time. If you slipped, Retake.`;
   else $('recCheckText').textContent = `The phone heard: "${heard || '(nothing)'}". Nothing here can be learned safely (missed words, or a different word rather than a sound-alike). Retake, or keep it and go on.`;
   setStatus(r.match ? 'Your line came through right.' : 'Was that the phone, or a slip?', '', 'rec');
+  // Heard right: nothing to decide, so keep it and move on by itself.
+  if (r.match) { await sleep(900); $('recCheck').hidden = true; return 'keep'; }
+  recBusy(false);
   try {
     for (;;) {
       const act = await recWait();
@@ -765,6 +775,7 @@ async function runRecord() {
   log(`record start: ${scene.title}; ${have.filter(Boolean).length} of ${list.length} lines already recorded; starting at line ${i + 1}`);
   $('runControls').hidden = true;
   $('recPanel').hidden = false;
+  document.body.classList.add('recording');
   let take = null;
   // Locking the phone or switching apps drops the take in progress; it starts again on return.
   const onHide = () => { if (document.hidden && take) { take.cancel(); take = null; log('record: the phone was locked or switched away; that take was dropped'); if (recTap) { const r = recTap; recTap = null; r('dropped'); } } };
@@ -773,8 +784,11 @@ async function runRecord() {
     while (i < list.length) {
       const st = list[i];
       highlight(steps.indexOf(st));
-      const reader = st.action === 'listen' ? 'You read your own line' : (voiceFor(st.item.who, 1).kind === 'man' ? `You read ${st.item.who}` : `Your daughter reads ${st.item.who}`);
-      $('recInfo').textContent = `Line ${i + 1} of ${list.length}. ${reader}, then tap Next.${have[i] ? ' (Already recorded; Next replaces it.)' : ''}`;
+      const reader = st.action === 'listen' ? `You: your line (${st.item.who})` : (voiceFor(st.item.who, 1).kind === 'man' ? `You read ${st.item.who}` : `Your daughter reads ${st.item.who}`);
+      $('recInfo').textContent = `Line ${i + 1} of ${list.length}. Read it, then tap Next.${have[i] ? ' (Already recorded; Next replaces it.)' : ''}`;
+      $('recWho').textContent = reader;
+      $('recLine').textContent = cleanText(st.item.text);
+      recBusy(false);
       setStatus(`Recording ${st.item.who}. Tap Next when done.`, '', 'rec');
       if (document.hidden) await new Promise((r) => document.addEventListener('visibilitychange', r, { once: true }));
       take = voices.startTake(stream);
@@ -796,6 +810,7 @@ async function runRecord() {
         }
         continue; // Retake, Play and the rest start this line again
       }
+      recBusy(true, 'Saving...');
       const blob = await t.stop();
       if (blob.size < 1500 || Date.now() - t.startedAt < 600) { setStatus('Nothing was recorded. Read the line again.', '', 'problem'); await sleep(1500); continue; }
       const clip = { id: st.item.id, text: st.item.text, who: st.item.who, sung: !!st.item.sung, prev: prevLineText(st.item), scene: scene.title, version: script.version || '', mime: blob.type, blob, savedAt: Date.now() };
@@ -821,6 +836,8 @@ async function runRecord() {
     $('recPanel').hidden = true;
     $('recCheck').hidden = true;
     $('runControls').hidden = false;
+    document.body.classList.remove('recording');
+    recBusy(false);
     running = false;
   }
   const done = have.filter(Boolean).length;

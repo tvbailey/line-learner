@@ -116,7 +116,16 @@
   label { display: block; font-weight: 650; margin: 18px 0 8px; }
   select { width: 100%; padding: 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; }
   .duo { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-  .rec-panel { padding-top: 4px; }
+  .rec-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg); border-top: 1px solid var(--rule);
+               padding: 10px max(16px, calc((100vw - 560px) / 2)) max(12px, env(safe-area-inset-bottom)); max-height: 75vh; overflow-y: auto;
+               box-shadow: 0 -8px 24px rgba(0,0,0,.25); }
+  body.recording main { padding-bottom: 60vh; }
+  .rec-who { font-weight: 750; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  .rec-line { font-size: 1.35rem; font-weight: 700; line-height: 1.35; margin: 4px 0 10px; }
+  .rec-next { width: 100%; min-height: 72px; font-size: 1.25rem; }
+  .rec-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+  .rec-row button { min-height: 52px; padding: 6px 2px; font-size: .9rem; }
+  .rec-panel button:disabled { opacity: .45; }
   .rec-check { border: 1px solid var(--rule); border-radius: 12px; padding: 12px; margin-top: 8px; background: var(--surface); }
   .rec-check .controls { grid-template-columns: 1fr 1fr 1fr; }
   .button-like { display: inline-flex; align-items: center; justify-content: center; min-height: 64px; border: 1px solid var(--rule);
@@ -177,10 +186,14 @@
     <button id="repeat">Repeat cue</button>
     <button id="lineBtn">Line</button>
   </div>
+  <!-- Record mode: a bar fixed to the bottom of the screen with the line and the buttons, so
+       nothing needs scrolling (Thomas, 7 Oct 2026: scrolling between the top and the script). -->
   <div id="recPanel" class="rec-panel" hidden>
     <p id="recInfo" class="note"></p>
-    <div class="controls">
-      <button id="recNext" class="primary wide">Next</button>
+    <p id="recWho" class="rec-who"></p>
+    <p id="recLine" class="rec-line"></p>
+    <button id="recNext" class="primary rec-next">Next</button>
+    <div class="rec-row">
       <button id="recRetake">Retake</button>
       <button id="recPlay">Play</button>
       <button id="recSkip">Skip</button>
@@ -289,6 +302,6 @@
     <p class="sub">The phone only knows if they sound close.<br>You are the judge of exact.</p>
   </div>
 </div>
-<script type="module" src="app.js?v=20261007e"></script>
+<script type="module" src="app.js?v=20261007f"></script>
 </body>
 </html>
