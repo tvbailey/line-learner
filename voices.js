@@ -129,9 +129,13 @@ export async function restoreFile(file) {
     if (!h.key || !Array.isArray(h.items)) throw new Error(`habit entry ${n + 1} in the file is damaged; nothing was restored`);
     return h;
   });
+  // A file made from scene recordings can withdraw clips an earlier file put on the phone (bad cuts),
+  // so the line goes back to the phone's voice until it is recorded again.
+  const withdraw = Array.isArray(data.removeClips) ? data.removeClips.filter((id) => typeof id === 'string') : [];
   const d = await db();
   await new Promise((resolve, reject) => {
     const tx = d.transaction(['clips', 'habits'], 'readwrite');
+    for (const id of withdraw) tx.objectStore('clips').delete(id);
     for (const c of clips) tx.objectStore('clips').put(c);
     for (const h of habits) tx.objectStore('habits').put(h);
     tx.oncomplete = resolve;
@@ -143,6 +147,7 @@ export async function restoreFile(file) {
   return {
     clips: (data.clips || []).filter((c) => ids.has(c.id)).length, clipsInFile: (data.clips || []).length,
     habits: (data.habits || []).filter((h) => keys.has(h.key)).length, habitsInFile: (data.habits || []).length,
+    removed: withdraw.filter((id) => !ids.has(id)).length,
   };
 }
 

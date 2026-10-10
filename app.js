@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261009a';
-import { parseScript } from './script.js?v=20261009a';
-import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261009a';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261009a';
-import * as voices from './voices.js?v=20261009a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261009b';
+import { parseScript } from './script.js?v=20261009b';
+import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261009b';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261009b';
+import * as voices from './voices.js?v=20261009b';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -892,7 +892,7 @@ async function restoreVoices(file) {
   try {
     const r = await voices.restoreFile(file);
     log(`restore: ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries are now on this phone`);
-    setStatus(`Restored ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries.`, '', r.clips === r.clipsInFile ? 'idle' : 'problem');
+    setStatus(`Restored ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries.${r.removed ? ` Removed ${r.removed} withdrawn recording${r.removed === 1 ? '' : 's'}.` : ''}`, '', r.clips === r.clipsInFile ? 'idle' : 'problem');
     refreshVoicesBox();
     if (!running) renderScript();
   } catch (err) { setStatus(`Restore failed: ${err.message}`, '', 'problem'); log(`restore failed: ${err.message}`); }
