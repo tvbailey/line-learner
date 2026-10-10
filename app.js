@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261009b';
-import { parseScript } from './script.js?v=20261009b';
-import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261009b';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261009b';
-import * as voices from './voices.js?v=20261009b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261009c';
+import { parseScript } from './script.js?v=20261009c';
+import { planScene, trimCues, recordSteps } from './plan.js?v=20261009c';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261009c';
+import * as voices from './voices.js?v=20261009c';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -124,25 +124,20 @@ function loadScriptText(text, source) {
 
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
-  const drill = $('mode').value === 'drill';
   const recording = $('mode').value === 'record';
-  // The drill takes every line with made-up words, songs included. Record mode takes the lines a
-  // run would read aloud at these settings, plus his own.
+  // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
-  else steps = drill ? drillSteps(planScene(scene.items, me))
-    : trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value));
+  else steps = trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
-  $('summary').hidden = true;
   showLastResult('', '');
-  if (drill && !steps.length) $('script').textContent = 'No made-up words in this scene.';
   // A stage direction rides on the line after it, as a small note, instead of a row of its own
   // (Thomas, 4 Oct 2026: separate rows made the script feel chopped into sections).
   let directions = [];
   steps.forEach((st, i) => {
-    if (st.action === 'cue' && !drill) return;
+    if (st.action === 'cue') return;
     const it = st.item;
-    const next = steps.slice(i + 1).find((s) => !(s.action === 'cue' && !drill) && s.item.kind !== 'direction');
+    const next = steps.slice(i + 1).find((s) => s.action !== 'cue' && s.item.kind !== 'direction');
     if (it.kind === 'direction' && next && next.item.kind === 'line') { directions.push(it.text); return; }
     const div = document.createElement('div');
     div.id = 'ln' + i;
@@ -207,12 +202,6 @@ function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, e
   span.textContent = note;
   el.append(mark, span);
   showLastResult(kind, RESULT_WORD[kind]);
-  for (const m of result.madeUp || []) {
-    const row = document.createElement('span');
-    row.className = 'heard ' + (m.close ? 'ok' : 'check');
-    row.textContent = `Script: ${m.written}  |  Phone heard: ${m.heard || '(nothing)'}  |  ${m.close ? '✓ sounds close' : '? check this one'}`;
-    el.append(row);
-  }
   // He knows he said it right: mark it so, and teach the phone's habit for this line.
   if (!ok && !prompted && item && heard) {
     const btn = document.createElement('button');
@@ -629,44 +618,6 @@ function awaitMyLine(expected, soundOnly = false) {
   });
 }
 
-let madeUpSeen = [];
-
-// Shows text big across the screen for a few seconds.
-function flashBig(text) {
-  return new Promise((resolve) => {
-    const box = $('bigWords');
-    box.innerHTML = '';
-    for (const w of text.split('  ·  ')) { const p = document.createElement('p'); p.className = 'flash-word'; p.textContent = w; box.append(p); }
-    $('big').hidden = false;
-    setTimeout(() => { $('big').hidden = true; resolve(); }, 3500);
-  });
-}
-
-// End of scene: every made-up word, the script's spelling beside what the phone heard.
-function showSummary() {
-  if (!madeUpSeen.length) return;
-  const box = $('summary');
-  box.innerHTML = '<h2>Made-up words</h2><p>Script vs. what the phone heard</p>';
-  for (const m of madeUpSeen) {
-    const row = document.createElement('div');
-    row.className = 'word-pair';
-    const dl = document.createElement('dl');
-    for (const [dt, dd] of [['Script', m.written], ['Phone heard', m.heard || '(nothing)']]) {
-      const t = document.createElement('dt'); t.textContent = dt;
-      const d = document.createElement('dd'); d.textContent = dd;
-      dl.append(t, d);
-    }
-    row.append(dl, badge(m.close ? 'ok' : 'check', m.close ? 'Sounds close' : 'Check this one'));
-    box.append(row);
-  }
-  const note = document.createElement('p');
-  note.className = 'note';
-  note.textContent = 'The phone only knows if they sound close. You are the judge of exact.';
-  box.append(note);
-  box.hidden = false;
-  box.scrollIntoView({ behavior: 'smooth' });
-}
-
 // ---------- Record mode ----------
 // Steps through the lines worth recording; one person reads each, and a tap on Next saves it.
 // Each take is saved before moving on, a retake keeps the old one until the new one is saved,
@@ -901,7 +852,7 @@ async function restoreVoices(file) {
 async function runScene() {
   if (running) return;
   if ($('mode').value === 'record') return runRecord();
-  running = true; paused = false; restarts = 0; madeUpSeen = [];
+  running = true; paused = false; restarts = 0;
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
@@ -919,7 +870,7 @@ async function runScene() {
   for (let i = 0; i < steps.length && running; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
-    if (action === 'cue') { if ($('mode').value === 'drill') highlight(i); lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
+    if (action === 'cue') { lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
@@ -941,18 +892,12 @@ async function runScene() {
     log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.habitUsed ? `, phone habit allowed x${result.habitUsed}` : ''}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''}${phoneRestarts ? `, phone stopped listening ${phoneRestarts}x mid-line` : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
     if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
     showHeard(i, heard, result, prompted, phoneRestarts, item, expected, lineEngine);
-    if (result.madeUp && result.madeUp.length) {
-      madeUpSeen.push(...result.madeUp);
-      // In the drill, flash the made-up words big right after he says them, to check himself.
-      if ($('mode').value === 'drill') await flashBig(madeUpWords(item.text).join('  ·  '));
-    }
   }
   stopListening();
   stopMoonScene();
   running = false;
   log(`scene end; listening restarts: ${restarts}`);
   $('context').open = true;
-  showSummary();
   setStatus('Scene done. Open "Scene around this line" for every line: ✓ Matched, ? Check, × Needs work.', '', 'done');
 }
 
@@ -997,7 +942,7 @@ async function setup() {
   $('perCharacter').checked = store.get('ll-per-character') !== 'off';
   $('perCharacter').onchange = () => store.set('ll-per-character', $('perCharacter').checked ? 'on' : 'off');
   const savedMode = store.get('ll-mode');
-  $('mode').value = savedMode === 'drill' || savedMode === 'record' ? savedMode : 'run';
+  $('mode').value = savedMode === 'record' ? 'record' : 'run';
   // Two big buttons stand in for the mode list; the list itself keeps the value.
   const syncMode = () => document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === $('mode').value));
   $('mode').onchange = () => { store.set('ll-mode', $('mode').value); syncMode(); if (!running) renderScript(); };

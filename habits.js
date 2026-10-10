@@ -3,7 +3,7 @@
 // "That's the phone" after recording his own line. A habit belongs to one line and one spot in it
 // (the script words on either side), and only a swap is ever learned, never a dropped or added
 // word, so a habit can't cover a word he actually left out.
-import { normalize, canonWord, isFiller, soundsClose, cleanText, stripDirections } from './core.js?v=20261009b';
+import { normalize, canonWord, isFiller, soundsClose, cleanText, stripDirections } from './core.js?v=20261009c';
 
 const words = (text) => normalize(text).filter((w) => !isFiller(w));
 const same = (a, b) => canonWord(a) === canonWord(b);

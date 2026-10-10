@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, drillSteps, trimCues, recordSteps } from './plan.js';
+import { planScene, trimCues, recordSteps } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -69,12 +69,6 @@ test('with songs skipped, spoken lines after the music starts but before the sin
 test('with songs skipped, a line right after the song gets the song\'s last line as its cue', () => {
   assert.deepEqual(planSkipping('# S\n[SONG: G]\nMOTHER: ~ TWO\n[END SONG]\nTHE OLD MAN: Quiet!\n'),
     ['speak:G', 'skip:TWO', 'show:songEnd', 'cue:TWO', 'listen:Quiet!']);
-});
-
-test('drill: only my lines with made-up words, each after the line before it as its cue', () => {
-  const items = parseScript('# S\nMOTHER: The furnace again, dear.\nTHE OLD MAN: {Consarned} ash!\nMOTHER: Well?\nTHE OLD MAN: Quiet!\nRANDY: Wow.\nTHE OLD MAN: Oh, {flibberdygibbit}!\n').scenes[0].items;
-  const drill = drillSteps(planScene(items, 'THE OLD MAN')).map((s) => `${s.action}:${s.item.text}`);
-  assert.deepEqual(drill, ['cue:The furnace again, dear.', 'listen:{Consarned} ash!', 'cue:Wow.', 'listen:Oh, {flibberdygibbit}!']);
 });
 
 test('trimCues: keep only the last N lines read before each of mine', () => {
