@@ -128,6 +128,15 @@ test('filler words written in the script ("Hmm.", "Uh ...") are not required', (
   assert.equal(compareLine('Uh ... yeah.', 'uh yeah').match, true);
 });
 
+test('numbers match whether written as digits or said as words', () => {
+  // Phone report 9 Oct 2026: "$50,000" in the script, "fifty thousand dollars" heard, marked wrong.
+  assert.deepEqual(normalize('$6'), ['six', 'dollars']);
+  assert.equal(compareLine('You could win $50,000 or prizes.', 'you could win fifty thousand dollars or prizes').match, true);
+  assert.equal(compareLine('Up to $6 apiece these days.', 'up to six dollars apiece these days').match, true);
+  assert.equal(compareLine('With only 23 days left.', 'with only twenty three days left').match, true);
+  assert.equal(compareLine('Bring two cups.', 'bring 2 cups').match, true);
+});
+
 test('isLineFinished restarts the quiet clock when the phone resumes listening', () => {
   // Phone report 1 Oct 2026: the line was ended during the phone's own listening restart, cutting him off.
   assert.equal(isLineFinished({ heardSomething: true, lastSpeechAt: 1000, listeningSince: 2500, now: 3200, gapMs: 2000 }), false);

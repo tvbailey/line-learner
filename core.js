@@ -12,9 +12,29 @@ const CONTRACTIONS = [
   [/\b(it|that|what|there|here|who|where|he|she|how)'s\b/g, '$1 is'], [/\blet's\b/g, 'let us'],
 ];
 
+// Numbers become words on both sides, so "$50,000" and "fifty thousand dollars" compare equal
+// (phone report 9 Oct 2026: the on-phone listener writes numbers out).
+const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+function numberWords(n) {
+  if (n < 20) return ONES[n];
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+  if (n < 1000) return ONES[Math.floor(n / 100)] + ' hundred' + (n % 100 ? ' ' + numberWords(n % 100) : '');
+  for (const [size, name] of [[1e9, 'billion'], [1e6, 'million'], [1e3, 'thousand']]) {
+    if (n >= size) return numberWords(Math.floor(n / size)) + ' ' + name + (n % size ? ' ' + numberWords(n % size) : '');
+  }
+  return String(n);
+}
+function spellNumbers(t) {
+  return t
+    .replace(/\$\s?(\d[\d,]*)/g, '$1 dollars')
+    .replace(/\d[\d,]*/g, (d) => { const n = Number(d.replace(/,/g, '')); return Number.isSafeInteger(n) ? ` ${numberWords(n)} ` : d; });
+}
+
 // Lowercase, expand contractions, fold leftover apostrophes, turn every other non-letter/digit into a word break.
 export function normalize(text) {
-  let t = String(text).toLowerCase().replace(/\u2019/g, "'");
+  let t = spellNumbers(String(text).toLowerCase().replace(/\u2019/g, "'"));
   for (const [re, long] of CONTRACTIONS) t = t.replace(re, long);
   return t
     .replace(/'/g, '')

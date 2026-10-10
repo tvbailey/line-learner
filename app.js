@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261007f';
-import { parseScript } from './script.js?v=20261007f';
-import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261007f';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261007f';
-import * as voices from './voices.js?v=20261007f';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261009a';
+import { parseScript } from './script.js?v=20261009a';
+import { planScene, drillSteps, trimCues, recordSteps } from './plan.js?v=20261009a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261009a';
+import * as voices from './voices.js?v=20261009a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
