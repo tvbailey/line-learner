@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261010a';
-import { parseScript } from './script.js?v=20261010a';
-import { planScene, trimCues, recordSteps, linesOnly } from './plan.js?v=20261010a';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261010a';
-import * as voices from './voices.js?v=20261010a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261010b';
+import { parseScript } from './script.js?v=20261010b';
+import { planScene, trimCues, recordSteps, linesOnly } from './plan.js?v=20261010b';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261010b';
+import * as voices from './voices.js?v=20261010b';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -151,7 +151,7 @@ function renderScript() {
   document.body.classList.toggle('lines-mode', lines);
   $('linesView').hidden = !lines;
   $('linesScene').value = $('scene').value;
-  if (lines) { $('sceneName').textContent = scene.title; renderLines(scene); }
+  if (lines) renderLines(scene);
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
@@ -879,6 +879,7 @@ async function restoreVoices(file) {
 
 async function runScene() {
   if (running) return;
+  if ($('mode').value === 'lines') return;
   if ($('mode').value === 'record') return runRecord();
   running = true; paused = false; restarts = 0;
   store.set('ll-gap', $('gap').value);
@@ -973,7 +974,11 @@ async function setup() {
   $('mode').value = savedMode === 'record' || savedMode === 'lines' ? savedMode : 'run';
   // Two big buttons stand in for the mode list; the list itself keeps the value.
   const syncMode = () => document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === $('mode').value));
-  $('mode').onchange = () => { store.set('ll-mode', $('mode').value); syncMode(); if (!running) renderScript(); };
+  // The mode can't change mid-scene: a switch to Lines only would hide the stage of a run still going.
+  $('mode').onchange = () => {
+    if (running) { $('mode').value = store.get('ll-mode') || 'run'; syncMode(); return; }
+    store.set('ll-mode', $('mode').value); syncMode(); renderScript();
+  };
   document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); }; });
   syncMode();
   // Lines only has its own scene list at the top; it and the one below stay the same.

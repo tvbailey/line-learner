@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261010a';
+import { stripDirections, cleanText } from './core.js?v=20261010b';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -79,16 +79,24 @@ export function linesOnly(items, me) {
   let started = false;   // one of his lines has been shown
   let last = null;       // the last line anyone said or sang since his last spoken line
   let dir = null;        // the last stage direction since then
+  let song = null;       // a song that started since then
   for (const it of items) {
     if (it.kind === 'direction') { dir = it.text; continue; }
+    if (it.kind === 'song') { song = it.title.replace(/^#\S+\s*/, ''); continue; }
     if (it.kind !== 'line') continue;
+    // "MOTHER: (gasps)" has no words to hear; it works like a stage direction.
+    if (!plainLine(it.text)) { dir = it.text; continue; }
     if (it.sung || !isMine(it, me)) { last = it; continue; }
     if (last && !last.sung && !isMine(last, me)) {
       out.push({ kind: 'cue', who: last.who, ...lastSentence(last.text) });
     } else if (last && last.sung) {
-      out.push({ kind: 'break', text: isMine(last, me) ? 'after you sing' : `after ${nameCase(last.who)} sings` });
+      // "Kids" and "Ralphie & The Parkers" sing; "Mother" sings.
+      const many = /[&,]/.test(last.who) || /S$/.test(last.who);
+      out.push({ kind: 'break', text: isMine(last, me) ? 'after you sing' : `after ${nameCase(last.who)} ${many ? 'sing' : 'sings'}` });
+    } else if (song && started) {
+      out.push({ kind: 'break', text: `song starts: ${song}` });
     } else if (dir && !started) {
-      out.push({ kind: 'context', text: shortDirection(dir, 25, false) });
+      out.push({ kind: 'context', text: directionEnd(dir, 25) });
     } else if (dir) {
       out.push({ kind: 'break', text: shortDirection(dir) });
     }
@@ -96,6 +104,7 @@ export function linesOnly(items, me) {
     started = true;
     last = null;
     dir = null;
+    song = null;
   }
   return out;
 }
@@ -103,11 +112,12 @@ export function linesOnly(items, me) {
 // The words to say: no in-line directions, no made-up-word braces.
 const plainLine = (text) => cleanText(stripDirections(text));
 
-// "THE OLD MAN" -> "The Old Man"; leaves ordinary words alone.
-const nameCase = (s) => s.replace(/\b[A-Z][A-Z']+\b/g, (w) => w[0] + w.slice(1).toLowerCase());
+// "THE OLD MAN" -> "The Old Man"; leaves ordinary words and two-letter capitals (TV, OK) alone.
+const nameCase = (s) => s.replace(/\b[A-Z][A-Z']{2,}\b/g, (w) => w[0] + w.slice(1).toLowerCase());
 
-// Sentences end at . ! or ? followed by a space; an ellipsis and titles like "Mr." don't count.
-const ABBREV = /\b(Mr|Mrs|Ms|Dr|St|Jr|Sr)\./g;
+// Sentences end at . ! or ? followed by a space; an ellipsis, an initial ("B.B.") and titles
+// like "Mr." don't count.
+const ABBREV = /\b(Mr|Mrs|Ms|Dr|St|Jr|Sr|[A-Z])\./g;
 function sentences(text) {
   const guarded = text.replace(ABBREV, '$1\u0001').replace(/\.\.\./g, '\u0002');
   return guarded.split(/(?<=[.!?]["')]?)\s+/).map((s) => s.replace(/\u0001/g, '.').replace(/\u0002/g, '...').trim()).filter(Boolean);
@@ -120,10 +130,23 @@ export function lastSentence(text) {
 
 // A stage direction cut down to a quick signal: its first sentence (or all of it), names in
 // normal case, at most `max` words.
-export function shortDirection(text, max = 9, firstOnly = true) {
+export function shortDirection(text, max = 9) {
   let s = stripDirections(text);
-  if (firstOnly) s = sentences(s)[0] || s;
-  s = nameCase(s);
+  s = nameCase(sentences(s)[0] || s);
   const words = s.split(/\s+/);
   return words.length > max ? words.slice(0, max).join(' ').replace(/[,;:]$/, '') + '...' : s;
+}
+
+// The end of a stage direction, where it brings him on: whole sentences from the end, up to
+// `max` words; a single longer sentence keeps its last `max` words.
+function directionEnd(text, max) {
+  const all = sentences(nameCase(stripDirections(text)));
+  let out = [];
+  for (let i = all.length - 1; i >= 0; i--) {
+    const next = [all[i], ...out];
+    if (out.length && next.join(' ').split(/\s+/).length > max) break;
+    out = next;
+  }
+  const words = out.join(' ').split(/\s+/);
+  return words.length > max ? '...' + words.slice(-max).join(' ') : out.join(' ');
 }

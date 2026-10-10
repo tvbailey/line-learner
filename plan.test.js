@@ -124,6 +124,30 @@ test('lastSentence: keeps the last sentence, marks when it cut, and is not foole
   assert.deepEqual(lastSentence('Starving people! What?'), { text: 'What?', partial: true });
 });
 
+test('lines only: a line that is only a direction is a direction, not an empty cue', () => {
+  assert.deepEqual(lines('# S\nRALPHIE: Dad, look!\nMOTHER: (gasps)\nTHE OLD MAN: Well!\n'),
+    ['cue:RALPHIE:Dad, look!', 'mine:Well!']);
+});
+
+test('lines only: a song starting between two of my lines is a break', () => {
+  assert.deepEqual(lines('# S\nTHE OLD MAN: Fragile.\n[SONG: #8 A Major Award]\nTHE OLD MAN: Crowbar.\n'),
+    ['mine:Fragile.', 'break:song starts: A Major Award', 'mine:Crowbar.']);
+});
+
+test('lines only: the opening context is the END of a long direction, where he comes on', () => {
+  const long = 'One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty. THE OLD MAN storms in from the basement.';
+  assert.deepEqual(lines(`# S\n(${long})\nTHE OLD MAN: Ha!\n`),
+    ['context:The Old Man storms in from the basement.', 'mine:Ha!']);
+});
+
+test('lastSentence: an initial is not the end of a sentence', () => {
+  assert.deepEqual(lastSentence('I want a Red Ryder B.B. gun!'), { text: 'I want a Red Ryder B.B. gun!', partial: false });
+});
+
+test('shortDirection: two-letter capitals like TV stay as they are', () => {
+  assert.equal(shortDirection('THE OLD MAN turns on the TV.'), 'The Old Man turns on the TV.');
+});
+
 test('shortDirection: first sentence, names in normal case, long ones cut', () => {
   assert.equal(shortDirection('The Parker house. A week later.'), 'The Parker house.');
   assert.equal(shortDirection('RALPHIE and RANDY enter from upstairs.'), 'Ralphie and Randy enter from upstairs.');
