@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261009c';
-import { parseScript } from './script.js?v=20261009c';
-import { planScene, trimCues, recordSteps } from './plan.js?v=20261009c';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261009c';
-import * as voices from './voices.js?v=20261009c';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261010a';
+import { parseScript } from './script.js?v=20261010a';
+import { planScene, trimCues, recordSteps, linesOnly } from './plan.js?v=20261010a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261010a';
+import * as voices from './voices.js?v=20261010a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -116,14 +116,42 @@ function loadScriptText(text, source) {
   script.scenes.forEach((sc, n) => { const o = document.createElement('option'); o.value = n; o.textContent = sc.title; sel.append(o); });
   const saved = store.get('ll-scene');
   if (saved && script.scenes[Number(saved)]) sel.value = saved;
+  $('linesScene').innerHTML = sel.innerHTML;
+  $('linesScene').value = sel.value;
   $('role').textContent = me;
   log(`script loaded (${source}): ${script.scenes.length} scene(s), version ${script.version || 'none'}, you are ${me}`);
   renderScript();
   return true;
 }
 
+// Lines only: his spoken lines with a short cue or note before each; nothing to run.
+function renderLines(scene) {
+  const list = $('linesList');
+  list.innerHTML = '';
+  for (const row of linesOnly(scene.items, me)) {
+    const div = document.createElement('div');
+    div.className = 'lo-' + row.kind;
+    if (row.kind === 'cue') {
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = row.who;
+      div.append(who, document.createTextNode((row.partial ? '... ' : '') + row.text));
+    } else if (row.kind === 'mine') {
+      div.textContent = row.text;
+      div.onclick = () => { if (list.parentElement.classList.contains('covered')) div.classList.toggle('shown'); };
+    } else div.textContent = `(${row.text})`;
+    list.append(div);
+  }
+  if (!list.children.length) list.textContent = 'No spoken lines for you in this scene.';
+}
+
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
+  const lines = $('mode').value === 'lines';
+  document.body.classList.toggle('lines-mode', lines);
+  $('linesView').hidden = !lines;
+  $('linesScene').value = $('scene').value;
+  if (lines) { $('sceneName').textContent = scene.title; renderLines(scene); }
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
@@ -942,12 +970,25 @@ async function setup() {
   $('perCharacter').checked = store.get('ll-per-character') !== 'off';
   $('perCharacter').onchange = () => store.set('ll-per-character', $('perCharacter').checked ? 'on' : 'off');
   const savedMode = store.get('ll-mode');
-  $('mode').value = savedMode === 'record' ? 'record' : 'run';
+  $('mode').value = savedMode === 'record' || savedMode === 'lines' ? savedMode : 'run';
   // Two big buttons stand in for the mode list; the list itself keeps the value.
   const syncMode = () => document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === $('mode').value));
   $('mode').onchange = () => { store.set('ll-mode', $('mode').value); syncMode(); if (!running) renderScript(); };
-  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); }; });
+  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); }; });
   syncMode();
+  // Lines only has its own scene list at the top; it and the one below stay the same.
+  $('linesScene').onchange = () => { $('scene').value = $('linesScene').value; $('scene').onchange(); };
+  $('linesRun').onclick = () => { $('mode').value = 'run'; $('mode').onchange(); scrollTo(0, 0); };
+  const setCover = (on) => {
+    $('linesView').classList.toggle('covered', on);
+    $('cover').setAttribute('aria-pressed', on);
+    $('cover').textContent = on ? 'Show my lines' : 'Cover my lines';
+    $('coverNote').hidden = !on;
+    document.querySelectorAll('.lo-mine.shown').forEach((el) => el.classList.remove('shown'));
+    store.set('ll-cover', on ? 'on' : 'off');
+  };
+  $('cover').onclick = () => setCover(!$('linesView').classList.contains('covered'));
+  setCover(store.get('ll-cover') === 'on');
   // Dark unless the phone asks for light; the button overrides either way and is remembered.
   const themeLabel = () => {
     const light = document.documentElement.dataset.theme === 'light'
