@@ -148,6 +148,7 @@
   .lines-view .duo { margin-top: 10px; }
   .lines-view .duo button[aria-pressed]::before { content: none; }
   .lines-list { margin-top: 14px; }
+  .lines-next { width: 100%; min-height: 64px; margin-top: 18px; font-size: 1.15rem; }
   .lo-mine { font-size: 1.3rem; line-height: 1.4; font-weight: 650; padding: 8px 12px; margin: 2px 0 6px;
              border-left: 4px solid var(--accent); background: var(--surface); border-radius: 8px; }
   .lo-cue { color: var(--muted); font-size: 1rem; padding: 14px 12px 2px; }
@@ -193,6 +194,7 @@
     </div>
     <p id="coverNote" class="note" hidden>Say each line, then tap it to check.</p>
     <div id="linesList" class="lines-list"></div>
+    <button type="button" id="linesNext" class="primary lines-next">Next scene</button>
   </section>
 
   <div class="controls" id="runControls">
@@ -309,6 +311,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261010b"></script>
+<script type="module" src="app.js?v=20261011a"></script>
 </body>
 </html>
