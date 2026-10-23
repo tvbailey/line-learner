@@ -287,3 +287,8 @@ test('compareLine: one word heard as two sound-alike words is a likely mishearin
   assert.equal(r.match, false);
   assert.equal(r.likelyMishearing, true);
 });
+
+test('"St." heard for Saint and "breeches" for britches still match (Thomas\'s report, 22 Oct 2026)', () => {
+  assert.equal(compareLine('Saint Peter, Saint Petersburg, Peter Rabbit, hey!', 'St. Peter, St. Petersburg, Peter Rabbit, hey!').match, true);
+  assert.equal(compareLine('Far-fangled britches!', 'Far-fangled breeches!').match, true);
+});

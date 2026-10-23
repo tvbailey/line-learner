@@ -75,6 +75,7 @@ const SAME_SOUND = [
   ['their', 'there'], ['know', 'no'], ['one', 'won'], ['right', 'write'], ['hear', 'here'],
   ['ate', 'eight'], ['by', 'buy', 'bye'], ['see', 'sea'], ['whole', 'hole'], ['wear', 'where'],
   ['weather', 'whether'], ['ok', 'okay'], ['mr', 'mister'], ['yeah', 'yea'],
+  ['saint', 'st'], ['britches', 'breeches'], ['mrs', 'missus'],
 ];
 const CANON = new Map();
 for (const group of SAME_SOUND) for (const w of group) CANON.set(w, group[0]);
