@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261022a';
+import { stripDirections, cleanText } from './core.js?v=20261024a';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -14,18 +14,25 @@ const SUNG_TO_PRACTICE = 2;
 // "THE OLD MAN & MOTHER" counts as his; "THE OLD MANAGER" doesn't.
 export const isMine = (item, me) => item.who.split(/\s*(?:&|,)\s*/).includes(me);
 
+// Songs skipped whole under "Dialogue only", spoken lines too: he learns those in the song's own
+// rehearsal (Thomas, 24 Oct 2026, for this song only, until he has judged the others).
+const SKIP_WHOLE = [/genius on cleveland street/i];
+export const skippedWhole = (song) => SKIP_WHOLE.some((re) => re.test(song.title));
+
 export function planScene(items, me, { skipSongs = false } = {}) {
   const steps = [];
   let sungLeft = SUNG_TO_PRACTICE;
   let lastSkipped = null;
+  let whole = false;
   const listen = (item) => {
     if (lastSkipped) { steps.push({ action: 'cue', item: lastSkipped }); lastSkipped = null; }
     steps.push({ action: 'listen', item });
   };
   for (const item of items) {
-    if (item.kind === 'song') { steps.push({ action: 'speak', item }); sungLeft = SUNG_TO_PRACTICE; lastSkipped = null; continue; }
+    if (item.kind === 'song') { steps.push({ action: 'speak', item }); sungLeft = SUNG_TO_PRACTICE; lastSkipped = null; whole = skipSongs && skippedWhole(item); continue; }
+    if (item.kind === 'songEnd') whole = false;
     if (item.kind !== 'line') { steps.push({ action: 'show', item }); continue; }
-    if (skipSongs && item.sung) { steps.push({ action: 'skip', item }); lastSkipped = item; continue; }
+    if (whole || (skipSongs && item.sung)) { steps.push({ action: 'skip', item }); lastSkipped = item; continue; }
     const mine = isMine(item, me);
     if (mine && !item.sung) { listen(item); sungLeft = SUNG_TO_PRACTICE; continue; }
     if (mine && item.sung && sungLeft > 0) { listen(item); sungLeft--; continue; }
@@ -80,15 +87,26 @@ export function linesOnly(items, me) {
   let last = null;       // the last line anyone said or sang since his last spoken line
   let dir = null;        // the last stage direction since then
   let song = null;       // a song that started since then
+  let whole = null;      // inside a song left out whole (SKIP_WHOLE): its name
+  let after = null;      // such a song just ended: its name
   for (const it of items) {
+    if (whole) {
+      if (it.kind === 'songEnd') { after = whole; whole = null; last = null; dir = null; song = null; }
+      continue;
+    }
     if (it.kind === 'direction') { dir = it.text; continue; }
-    if (it.kind === 'song') { song = it.title.replace(/^#\S+\s*/, ''); continue; }
+    if (it.kind === 'song') {
+      if (skippedWhole(it)) { whole = it.title.replace(/^#\S+\s*/, ''); continue; }
+      song = it.title.replace(/^#\S+\s*/, ''); continue;
+    }
     if (it.kind !== 'line') continue;
     // "MOTHER: (gasps)" has no words to hear; it works like a stage direction.
     if (!plainLine(it.text)) { dir = it.text; continue; }
     if (it.sung || !isMine(it, me)) { last = it; continue; }
     if (last && !last.sung && !isMine(last, me)) {
       out.push({ kind: 'cue', who: last.who, ...lastSentence(last.text) });
+    } else if (after) {
+      out.push({ kind: 'break', text: `after the song: ${after}` });
     } else if (last && last.sung) {
       // "Kids" and "Ralphie & The Parkers" sing; "Mother" sings.
       const many = /[&,]/.test(last.who) || /S$/.test(last.who);
@@ -105,6 +123,7 @@ export function linesOnly(items, me) {
     last = null;
     dir = null;
     song = null;
+    after = null;
   }
   return out;
 }

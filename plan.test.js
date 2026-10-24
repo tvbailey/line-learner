@@ -153,3 +153,18 @@ test('shortDirection: first sentence, names in normal case, long ones cut', () =
   assert.equal(shortDirection('RALPHIE and RANDY enter from upstairs.'), 'Ralphie and Randy enter from upstairs.');
   assert.equal(shortDirection('One two three four five six seven eight nine ten eleven.', 8), 'One two three four five six seven eight...');
 });
+
+test('Dialogue only skips everything inside "The Genius on Cleveland Street", spoken lines too (Thomas, 24 Oct 2026)', () => {
+  assert.deepEqual(planSkipping('# S\nTHE OLD MAN: Silly?\n[SONG: #4 The Genius on Cleveland Street]\nTHE OLD MAN: ~ WHEELS\nTHE OLD MAN: Wow!\nMOTHER: Frank?\n[END SONG]\nMOTHER: Supper.\nTHE OLD MAN: Quiet!\n'),
+    ['listen:Silly?', 'speak:#4 The Genius on Cleveland Street', 'skip:WHEELS', 'skip:Wow!', 'skip:Frank?', 'show:songEnd', 'speak:Supper.', 'listen:Quiet!']);
+  // Other songs keep their spoken lines.
+  assert.deepEqual(planSkipping('# S\n[SONG: A Major Award]\nTHE OLD MAN: ~ HA\nTHE OLD MAN: Wow!\n[END SONG]\n'),
+    ['speak:A Major Award', 'skip:HA', 'cue:HA', 'listen:Wow!', 'show:songEnd']);
+});
+
+test('lines only leaves out "The Genius on Cleveland Street" and notes it', () => {
+  assert.deepEqual(lines('# S\nTHE OLD MAN: Silly?\n[SONG: #4 The Genius on Cleveland Street]\nTHE OLD MAN: Wow!\n[END SONG]\nMOTHER: Supper.\nTHE OLD MAN: Quiet!\n(He sits.)\nTHE OLD MAN: More.\n'),
+    ['mine:Silly?', 'cue:MOTHER:Supper.', 'mine:Quiet!', 'break:He sits.', 'mine:More.']);
+  assert.deepEqual(lines('# S\nTHE OLD MAN: Silly?\n[SONG: #4 The Genius on Cleveland Street]\nTHE OLD MAN: Wow!\n[END SONG]\nTHE OLD MAN: Quiet!\n'),
+    ['mine:Silly?', 'break:after the song: The Genius on Cleveland Street', 'mine:Quiet!']);
+});

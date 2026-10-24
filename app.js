@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261022a';
-import { parseScript } from './script.js?v=20261022a';
-import { planScene, trimCues, recordSteps, linesOnly } from './plan.js?v=20261022a';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261022a';
-import * as voices from './voices.js?v=20261022a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024a';
+import { parseScript } from './script.js?v=20261024a';
+import { planScene, trimCues, recordSteps, linesOnly } from './plan.js?v=20261024a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024a';
+import * as voices from './voices.js?v=20261024a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -562,6 +562,11 @@ function stopListening() {
 // ---------- the scene ----------
 let running = false;
 let paused = false;
+// One button pauses and resumes; its label says which it will do (Thomas, 24 Oct 2026).
+function setPaused(on) {
+  paused = on;
+  $('pause').textContent = on ? 'Resume' : 'Pause';
+}
 let lastCue = '';
 let lastCueItem = null;
 let tapCommand = null;
@@ -636,8 +641,8 @@ function awaitMyLine(expected, soundOnly = false) {
       }
       busy = true;
       if (paused && cmd !== 'resume' && cmd !== 'pause') { busy = false; return; }
-      if (cmd === 'pause') { paused = !paused; log(paused ? 'paused' : 'resumed'); setStatus(paused ? 'Paused. Say "resume".' : 'Your line. Listening...', paused ? 'paused' : 'listening'); busy = false; return; }
-      if (cmd === 'resume') { if (paused) { paused = false; log('resumed'); } setStatus('Your line. Listening...', 'listening'); busy = false; return; }
+      if (cmd === 'pause') { setPaused(!paused); log(paused ? 'paused' : 'resumed'); setStatus(paused ? 'Paused. Say "resume".' : 'Your line. Listening...', paused ? 'paused' : 'listening'); busy = false; return; }
+      if (cmd === 'resume') { if (paused) { setPaused(false); log('resumed'); } setStatus('Your line. Listening...', 'listening'); busy = false; return; }
       if (cmd === 'line' || cmd === 'repeat') {
         const text = cmd === 'line' ? promptText(expected, ++promptLevel) : lastCue;
         log(cmd === 'line' ? `prompt level ${promptLevel}` : 'repeating the cue');
@@ -892,7 +897,7 @@ async function runScene() {
   if (running) return;
   if ($('mode').value === 'lines') return;
   if ($('mode').value === 'record') return runRecord();
-  running = true; paused = false; restarts = 0;
+  running = true; setPaused(false); restarts = 0;
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
@@ -936,6 +941,7 @@ async function runScene() {
   stopListening();
   stopMoonScene();
   running = false;
+  setPaused(false);
   log(`scene end; listening restarts: ${restarts}`);
   $('context').open = true;
   setStatus('Scene done. Open "Scene around this line" for every line: ✓ Matched, ? Check, × Needs work.', '', 'done');
