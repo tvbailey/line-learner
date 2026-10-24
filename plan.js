@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261024a';
+import { stripDirections, cleanText } from './core.js?v=20261024b';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -168,4 +168,15 @@ function directionEnd(text, max) {
   }
   const words = out.join(' ').split(/\s+/);
   return words.length > max ? '...' + words.slice(-max).join(' ') : out.join(' ');
+}
+
+// Lines he tapped in the script view to bring into a run (Thomas, 24 Oct 2026: "That's nice,
+// dear" was trimmed away). A skipped line of someone else's is read; one of his is listened for.
+// An included line isn't read a second time as the cue.
+export function includeLines(steps, ids, me) {
+  if (!ids.size) return steps;
+  return steps
+    .filter((st) => !(st.action === 'cue' && ids.has(st.item.id)))
+    .map((st) => (st.action === 'skip' && st.item.kind === 'line' && ids.has(st.item.id)
+      ? { ...st, action: isMine(st.item, me) ? 'listen' : 'speak', included: true } : st));
 }

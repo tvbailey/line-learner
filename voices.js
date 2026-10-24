@@ -208,6 +208,7 @@ function speechBounds(buf) {
   const pad = 0.15;
   return { start: Math.max(0, first / buf.sampleRate - pad), end: Math.min(buf.duration, last / buf.sampleRate + pad) };
 }
+let playing = null; // the clip now sounding, so Pause can cut it off
 export async function playClip(clip) {
   const buf = await decodeClip(clip);
   const { start, end } = speechBounds(buf);
@@ -217,8 +218,14 @@ export async function playClip(clip) {
     src.buffer = buf;
     src.connect(ac.destination);
     // A safety net in case "ended" never arrives, as speech sometimes doesn't.
-    const timer = setTimeout(resolve, (end - start) * 1000 + 3000);
-    src.onended = () => { clearTimeout(timer); resolve(); };
+    const finish = () => { clearTimeout(timer); if (playing === src) playing = null; resolve(); };
+    const timer = setTimeout(finish, (end - start) * 1000 + 3000);
+    src.onended = finish;
+    playing = src;
     src.start(0, start, Math.max(0.1, end - start));
   });
+}
+// Stops the clip mid-line (Thomas, 24 Oct 2026: Pause should pause whoever is speaking).
+export function stopClip() {
+  if (playing) { try { playing.stop(); } catch (_) { /* already stopped */ } }
 }

@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024a';
-import { parseScript } from './script.js?v=20261024a';
-import { planScene, trimCues, recordSteps, linesOnly } from './plan.js?v=20261024a';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024a';
-import * as voices from './voices.js?v=20261024a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024b';
+import { parseScript } from './script.js?v=20261024b';
+import { planScene, trimCues, recordSteps, linesOnly, includeLines } from './plan.js?v=20261024b';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024b';
+import * as voices from './voices.js?v=20261024b';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -156,6 +156,19 @@ function nextLinesScene() {
   scrollTo(0, 0);
 }
 
+// Line ids he tapped to include, kept on this phone.
+function included() {
+  try { return new Set(JSON.parse(store.get('ll-included') || '[]')); } catch (_) { return new Set(); }
+}
+function toggleIncluded(id) {
+  const ids = included();
+  if (ids.has(id)) ids.delete(id); else ids.add(id);
+  store.set('ll-included', JSON.stringify([...ids]));
+  const box = $('script'), top = box.scrollTop;
+  renderScript();
+  box.scrollTop = top;
+}
+
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
   const lines = $('mode').value === 'lines';
@@ -166,7 +179,7 @@ function renderScript() {
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
-  else steps = trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value));
+  else steps = includeLines(trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value)), included(), me);
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   showLastResult('', '');
@@ -187,7 +200,13 @@ function renderScript() {
       div.className = 'ln' + (it.who === me ? ' mine' : '') + (st.action === 'skip' ? ' skipped' : '');
       const who = document.createElement('span');
       who.className = 'who';
-      who.textContent = it.who + (it.sung ? ' (sung)' : '') + (st.action === 'skip' ? ' - skipped' : '');
+      who.textContent = it.who + (it.sung ? ' (sung)' : '')
+        + (st.action === 'skip' ? ' - skipped, tap to include' : st.included ? ' - included by you, tap to skip' : '');
+      // Tap a skipped line to bring it into the run; tap again to leave it out.
+      if (!recording && (st.action === 'skip' || st.included)) {
+        div.classList.add('tappable');
+        div.onclick = (e) => { if (e.target.closest('button') || running) return; toggleIncluded(it.id); };
+      }
       for (const d of directions) { const s = document.createElement('span'); s.className = 'dir'; s.textContent = `(${d})`; div.append(s); }
       directions = [];
       div.append(who, document.createTextNode(cleanText(it.text)));
@@ -579,15 +598,39 @@ function gapMs() { return Number($('gap').value) * 1000; }
 
 // Reads someone else's line: their recorded voice if there is one for this exact line, otherwise
 // the phone's voice. Listening is off until it has finished playing.
+// Pause during a cue stops the voice at once; Resume says that line again from the top.
+let inCue = false;
 async function sayOther(text, who = '', item = null) {
   stopListening();
-  setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
-  const clip = item && sceneClips.get(item.id);
-  if (clip) {
-    try { await voices.playClip(clip); return; }
-    catch (err) { log(`recorded voice failed (${err.message}); using the phone's voice`); }
+  inCue = true;
+  try {
+    for (;;) {
+      while (paused && running) await new Promise((r) => setTimeout(r, 150));
+      if (!running) return;
+      setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
+      const clip = item && sceneClips.get(item.id);
+      let played = false;
+      if (clip) {
+        try { await voices.playClip(clip); played = true; }
+        catch (err) { log(`recorded voice failed (${err.message}); using the phone's voice`); }
+      }
+      if (!played) await speak(cleanText(stripDirections(text)), who);
+      if (!paused) return;
+    }
+  } finally { inCue = false; }
+}
+
+function pauseTapped() {
+  if (running && inCue) {
+    if (paused) { setPaused(false); log('resumed'); return; }
+    setPaused(true);
+    log('paused mid-cue');
+    setStatus('Paused. Tap Resume.', 'paused');
+    voices.stopClip();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    return;
   }
-  await speak(cleanText(stripDirections(text)), who);
+  tapCommand = paused ? 'resume' : 'pause';
 }
 
 async function loadSceneClips() {
@@ -1043,7 +1086,7 @@ async function setup() {
   if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
   $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; store.set('ll-gap', $('gap').value); };
   $('start').onclick = runScene;
-  $('pause').onclick = () => { tapCommand = paused ? 'resume' : 'pause'; };
+  $('pause').onclick = pauseTapped;
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
   $('lineBtn').onclick = () => { tapCommand = 'line'; };
   $('copy').onclick = copyReport;

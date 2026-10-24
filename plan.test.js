@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection } from './plan.js';
+import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -167,4 +167,20 @@ test('lines only leaves out "The Genius on Cleveland Street" and notes it', () =
     ['mine:Silly?', 'cue:MOTHER:Supper.', 'mine:Quiet!', 'break:He sits.', 'mine:More.']);
   assert.deepEqual(lines('# S\nTHE OLD MAN: Silly?\n[SONG: #4 The Genius on Cleveland Street]\nTHE OLD MAN: Wow!\n[END SONG]\nTHE OLD MAN: Quiet!\n'),
     ['mine:Silly?', 'break:after the song: The Genius on Cleveland Street', 'mine:Quiet!']);
+});
+
+test('includeLines: a skipped line he tapped is read after all, once (Thomas, 24 Oct 2026)', () => {
+  const items = parseScript('# S\nA: one\nB: two\nA: three\nB: four\nTHE OLD MAN: Mine.\n').scenes[0].items;
+  const steps = trimCues(planScene(items, 'THE OLD MAN'), 2);
+  const one = items[0].id;
+  assert.deepEqual(includeLines(steps, new Set([one]), 'THE OLD MAN').map((s) => `${s.action}:${s.item.text}`),
+    ['speak:one', 'skip:two', 'speak:three', 'speak:four', 'listen:Mine.']);
+  assert.equal(includeLines(steps, new Set([one]), 'THE OLD MAN')[0].included, true);
+});
+
+test('includeLines: an included sung line is not read twice as the cue', () => {
+  const items = parseScript('# S\n[SONG: G]\nMOTHER: ~ LA\n[END SONG]\nTHE OLD MAN: Hi.\n').scenes[0].items;
+  const sung = items[1].id;
+  assert.deepEqual(includeLines(planScene(items, 'THE OLD MAN', { skipSongs: true }), new Set([sung]), 'THE OLD MAN').map((s) => `${s.action}:${s.item.text || s.item.kind}`),
+    ['speak:song', 'speak:LA', 'show:songEnd', 'listen:Hi.']);
 });
