@@ -467,8 +467,8 @@ function loadMoon() {
 
 // Sound through Bluetooth (Thomas, 24 Oct 2026: cues played on the phone speaker, not his hearing
 // aids). Opening the mic with echo cancelling on puts Android in "phone call" mode, which can move
-// sound off Bluetooth; with it off, Android should stay in normal media mode. Untested on his phone
-// when written; the setting lets him switch it back if the phone starts mishearing him.
+// sound off Bluetooth; with it off, Android stays in normal media mode. Confirmed on his phone with
+// his hearing aids, 24 Oct 2026; the setting lets him switch it back if the phone mishears him.
 function micConstraints() {
   return $('bluetooth').checked ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : true;
 }
