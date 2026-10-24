@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024c';
-import { parseScript } from './script.js?v=20261024c';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024c';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024c';
-import * as voices from './voices.js?v=20261024c';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024d';
+import { parseScript } from './script.js?v=20261024d';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024d';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024d';
+import * as voices from './voices.js?v=20261024d';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -465,6 +465,14 @@ function loadMoon() {
   return promise;
 }
 
+// Sound through Bluetooth (Thomas, 24 Oct 2026: cues played on the phone speaker, not his hearing
+// aids). Opening the mic with echo cancelling on puts Android in "phone call" mode, which can move
+// sound off Bluetooth; with it off, Android should stay in normal media mode. Untested on his phone
+// when written; the setting lets him switch it back if the phone starts mishearing him.
+function micConstraints() {
+  return $('bluetooth').checked ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : true;
+}
+
 async function loadMoonModel(size) {
   if (moon) { try { moon.mic.close(); } catch (_) { /* already closed */ } moon = null; }
   if (!self.crossOriginIsolated) { log('on-phone listening: this page is not isolated yet (reload once); using Google'); return false; }
@@ -473,6 +481,7 @@ async function loadMoonModel(size) {
     const lib = await import(MOONSHINE);
     const m = { size, ready: false, live: false, errors: 0 };
     m.mic = new lib.MicTranscriber()
+      .audioConstraints(micConstraints())
       .modelArch(size === 'small' ? lib.ModelArch.SmallStreaming : lib.ModelArch.TinyStreaming)
       .onProgress((f, file, bytes) => { if (!running || !moon) setStatus(`Downloading the on-phone listener: ${Math.round(f * 100)}%${bytes && bytes.total ? ` of ${Math.round(bytes.total / 1048576)} MB` : ''}`, '', 'idle'); })
       .onText(moonText)
@@ -510,7 +519,9 @@ async function startMoonScene() {
     return false;
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
+    const s = stream.getAudioTracks()[0]?.getSettings?.() || {};
+    log(`mic settings: echo cancelling ${s.echoCancellation}, noise suppression ${s.noiseSuppression}, auto gain ${s.autoGainControl}`);
     const ctx = new AudioContext();
     if (ctx.state === 'suspended') ctx.resume().catch(() => { /* resumes on the next tap */ });
     const an = ctx.createAnalyser();
@@ -1036,7 +1047,7 @@ async function copyReport() {
     `when: ${new Date().toString()}`,
     `browser: ${navigator.userAgent}`,
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
-    `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}`,
+    `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}`,
     `listening restarts: ${restarts}`,
     '', ...logLines,
   ].join('\n');
@@ -1092,6 +1103,12 @@ async function setup() {
   };
   themeLabel();
   matchMedia('(prefers-color-scheme: light)').addEventListener('change', themeLabel);
+  $('bluetooth').checked = store.get('ll-bluetooth') !== 'off';
+  $('bluetooth').onchange = () => {
+    store.set('ll-bluetooth', $('bluetooth').checked ? 'on' : 'off');
+    // The listener opened the mic with the old setting; reload it before the next scene.
+    if (moon && !running) { try { moon.mic.close(); } catch (_) { /* already closed */ } moon = null; }
+  };
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
