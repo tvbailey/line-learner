@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261024b';
+import { stripDirections, cleanText } from './core.js?v=20261024c';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -81,7 +81,7 @@ export function trimCues(steps, keep) {
 //   break   - a short note when only stage directions (or singing) came between
 //   context - the stage direction before his first line, when he opens the scene
 // Sung lines never appear, his or anyone else's; spoken lines inside songs do.
-export function linesOnly(items, me) {
+export function linesOnly(items, me, left = new Set()) {
   const out = [];
   let started = false;   // one of his lines has been shown
   let last = null;       // the last line anyone said or sang since his last spoken line
@@ -103,6 +103,7 @@ export function linesOnly(items, me) {
     // "MOTHER: (gasps)" has no words to hear; it works like a stage direction.
     if (!plainLine(it.text)) { dir = it.text; continue; }
     if (it.sung || !isMine(it, me)) { last = it; continue; }
+    if (left.has(it.id)) continue; // one of his he tapped out of the scene
     if (last && !last.sung && !isMine(last, me)) {
       out.push({ kind: 'cue', who: last.who, ...lastSentence(last.text) });
     } else if (after) {
@@ -179,4 +180,16 @@ export function includeLines(steps, ids, me) {
     .filter((st) => !(st.action === 'cue' && ids.has(st.item.id)))
     .map((st) => (st.action === 'skip' && st.item.kind === 'line' && ids.has(st.item.id)
       ? { ...st, action: isMine(st.item, me) ? 'listen' : 'speak', included: true } : st));
+}
+
+// His own choices per line, tapped in the script view (Thomas, 24 Oct 2026: "customize each
+// scene ... and I don't have to come back and ask you"). `picks` maps a line id to 'in' or 'out'.
+// A line tapped out is skipped before the "Read before" trimming, so cues that only led up to a
+// line of his he left out drop away too; a line tapped in is read (or listened for) after it.
+export function pickLines(steps, picks, me, keep) {
+  const out = (id) => picks.get(id) === 'out';
+  const trimmed = trimCues(steps
+    .filter((st) => !(st.action === 'cue' && out(st.item.id)))
+    .map((st) => (st.item.kind === 'line' && out(st.item.id) ? { ...st, action: 'skip', excluded: true } : st)), keep);
+  return includeLines(trimmed, new Set([...picks].filter(([, v]) => v === 'in').map(([k]) => k)), me);
 }

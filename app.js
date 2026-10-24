@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024b';
-import { parseScript } from './script.js?v=20261024b';
-import { planScene, trimCues, recordSteps, linesOnly, includeLines } from './plan.js?v=20261024b';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024b';
-import * as voices from './voices.js?v=20261024b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024c';
+import { parseScript } from './script.js?v=20261024c';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024c';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024c';
+import * as voices from './voices.js?v=20261024c';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -128,7 +128,7 @@ function loadScriptText(text, source) {
 function renderLines(scene) {
   const list = $('linesList');
   list.innerHTML = '';
-  for (const row of linesOnly(scene.items, me)) {
+  for (const row of linesOnly(scene.items, me, leftOut())) {
     const div = document.createElement('div');
     div.className = 'lo-' + row.kind;
     if (row.kind === 'cue') {
@@ -156,14 +156,23 @@ function nextLinesScene() {
   scrollTo(0, 0);
 }
 
-// Line ids he tapped to include, kept on this phone.
-function included() {
-  try { return new Set(JSON.parse(store.get('ll-included') || '[]')); } catch (_) { return new Set(); }
+// Lines he tapped in or out of a scene ({ id: 'in' | 'out' }), kept on this phone. The first
+// version (24 Oct 2026) kept only tapped-in ids, under 'll-included'; those carry over.
+function picks() {
+  try {
+    const saved = store.get('ll-picks');
+    if (saved) return new Map(Object.entries(JSON.parse(saved)));
+    return new Map(JSON.parse(store.get('ll-included') || '[]').map((id) => [id, 'in']));
+  } catch (_) { return new Map(); }
 }
-function toggleIncluded(id) {
-  const ids = included();
-  if (ids.has(id)) ids.delete(id); else ids.add(id);
-  store.set('ll-included', JSON.stringify([...ids]));
+const leftOut = () => new Set([...picks()].filter(([, v]) => v === 'out').map(([k]) => k));
+function togglePick(id, nowIn, redraw = true) {
+  const p = picks();
+  const cur = p.get(id);
+  if (nowIn) { if (cur === 'in') p.delete(id); else p.set(id, 'out'); }
+  else { if (cur === 'out') p.delete(id); else p.set(id, 'in'); }
+  store.set('ll-picks', JSON.stringify(Object.fromEntries(p)));
+  if (!redraw) return;
   const box = $('script'), top = box.scrollTop;
   renderScript();
   box.scrollTop = top;
@@ -179,7 +188,7 @@ function renderScript() {
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
-  else steps = includeLines(trimCues(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), Number($('before').value)), included(), me);
+  else steps = pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   showLastResult('', '');
@@ -201,11 +210,23 @@ function renderScript() {
       const who = document.createElement('span');
       who.className = 'who';
       who.textContent = it.who + (it.sung ? ' (sung)' : '')
-        + (st.action === 'skip' ? ' - skipped, tap to include' : st.included ? ' - included by you, tap to skip' : '');
-      // Tap a skipped line to bring it into the run; tap again to leave it out.
-      if (!recording && (st.action === 'skip' || st.included)) {
+        + (st.excluded ? ' - left out by you, tap to include' : st.action === 'skip' ? ' - skipped, tap to include'
+          : st.included ? ' - included by you, tap to skip' : '');
+      // Any line, his or not, taps in or out of the run (Thomas, 24 Oct 2026).
+      if (!recording) {
         div.classList.add('tappable');
-        div.onclick = (e) => { if (e.target.closest('button') || running) return; toggleIncluded(it.id); };
+        let inRun = st.action !== 'skip';
+        div.onclick = (e) => {
+          if (e.target.closest('button') || running) return;
+          // With a finished run's results on screen, change only this row (it counts from the
+          // next run) rather than redraw the list and lose the results.
+          const keepResults = !!$('script').querySelector('.result');
+          togglePick(it.id, inRun, !keepResults);
+          if (!keepResults) return;
+          inRun = !inRun;
+          div.classList.toggle('skipped', !inRun);
+          who.textContent = it.who + (it.sung ? ' (sung)' : '') + (inRun ? ' - included by you (next run), tap to skip' : ' - left out by you (next run), tap to include');
+        };
       }
       for (const d of directions) { const s = document.createElement('span'); s.className = 'dir'; s.textContent = `(${d})`; div.append(s); }
       directions = [];

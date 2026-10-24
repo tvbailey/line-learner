@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines } from './plan.js';
+import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -183,4 +183,25 @@ test('includeLines: an included sung line is not read twice as the cue', () => {
   const sung = items[1].id;
   assert.deepEqual(includeLines(planScene(items, 'THE OLD MAN', { skipSongs: true }), new Set([sung]), 'THE OLD MAN').map((s) => `${s.action}:${s.item.text || s.item.kind}`),
     ['speak:song', 'speak:LA', 'show:songEnd', 'listen:Hi.']);
+});
+
+test('pickLines: one of his lines tapped out is skipped, and so are the cues that only led to it (Thomas, 24 Oct 2026)', () => {
+  const items = parseScript('# S\nA: one\nTHE OLD MAN: Keep.\nB: two\nTHE OLD MAN: Drop me.\nC: three\nTHE OLD MAN: Last.\n').scenes[0].items;
+  const drop = items[3].id;
+  const out = pickLines(planScene(items, 'THE OLD MAN'), new Map([[drop, 'out']]), 'THE OLD MAN', 1);
+  assert.deepEqual(out.map((s) => `${s.action}:${s.item.text}`), ['speak:one', 'listen:Keep.', 'skip:two', 'skip:Drop me.', 'speak:three', 'listen:Last.']);
+  assert.equal(out[3].excluded, true);
+});
+
+test('pickLines: a line tapped in is read; tapped out, a cue line is not', () => {
+  const items = parseScript('# S\nA: one\nB: two\nTHE OLD MAN: Mine.\n').scenes[0].items;
+  const picks = new Map([[items[0].id, 'in'], [items[1].id, 'out']]);
+  assert.deepEqual(pickLines(planScene(items, 'THE OLD MAN'), picks, 'THE OLD MAN', 1).map((s) => `${s.action}:${s.item.text}`),
+    ['speak:one', 'skip:two', 'listen:Mine.']);
+});
+
+test('lines only leaves out his lines he tapped out', () => {
+  const items = parseScript('# S\nMOTHER: Hi.\nTHE OLD MAN: Keep.\nTHE OLD MAN: Drop me.\nMOTHER: So?\nTHE OLD MAN: Last.\n').scenes[0].items;
+  assert.deepEqual(linesOnly(items, 'THE OLD MAN', new Set([items[2].id])).map((r) => `${r.kind}:${r.text}`),
+    ['cue:Hi.', 'mine:Keep.', 'cue:So?', 'mine:Last.']);
 });
