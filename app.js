@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024d';
-import { parseScript } from './script.js?v=20261024d';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024d';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024d';
-import * as voices from './voices.js?v=20261024d';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024e';
+import { parseScript } from './script.js?v=20261024e';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024e';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024e';
+import * as voices from './voices.js?v=20261024e';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -628,6 +628,23 @@ let runEngine = 'google';
 
 function gapMs() { return Number($('gap').value) * 1000; }
 
+// Stop ends the run where it is (Thomas, 24 Oct 2026): the Start button reads Stop during a run.
+let stopRequested = false;
+function stopRun() {
+  if (!running || stopRequested) return;
+  stopRequested = true;
+  setPaused(false);
+  log('stopped by tap');
+  voices.stopClip();
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+
+// After a run, one tap opens the next scene at its top, ready to Start (Thomas, 24 Oct 2026).
+function showRunNext(show) {
+  const last = !script || Number($('scene').value) >= script.scenes.length - 1;
+  $('runNext').hidden = !show || last;
+}
+
 // Reads someone else's line: their recorded voice if there is one for this exact line, otherwise
 // the phone's voice. Listening is off until it has finished playing.
 // Pause during a cue stops the voice at once; Resume says that line again from the top.
@@ -637,8 +654,8 @@ async function sayOther(text, who = '', item = null) {
   inCue = true;
   try {
     for (;;) {
-      while (paused && running) await new Promise((r) => setTimeout(r, 150));
-      if (!running) return;
+      while (paused && running && !stopRequested) await new Promise((r) => setTimeout(r, 150));
+      if (!running || stopRequested) return;
       setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
       const clip = item && sceneClips.get(item.id);
       let played = false;
@@ -698,6 +715,7 @@ function awaitMyLine(expected, soundOnly = false) {
     resetHeard();
     listenForLine();
     const tick = setInterval(async () => {
+      if (stopRequested) { clearInterval(tick); stopListening(); resolve({ heard: '', prompted: false, phoneRestarts: 0 }); return; }
       if (busy || speaking) return;
       let cmd = tapCommand; tapCommand = null;
       let utterance = '';
@@ -972,7 +990,9 @@ async function runScene() {
   if (running) return;
   if ($('mode').value === 'lines') return;
   if ($('mode').value === 'record') return runRecord();
-  running = true; setPaused(false); restarts = 0;
+  running = true; stopRequested = false; setPaused(false); restarts = 0;
+  $('start').textContent = 'Stop';
+  showRunNext(false);
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
@@ -987,7 +1007,7 @@ async function runScene() {
   }
   const rec = await loadSceneClips();
   log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}; recorded voices for ${rec.recorded} of ${rec.cues} cue lines`);
-  for (let i = 0; i < steps.length && running; i++) {
+  for (let i = 0; i < steps.length && running && !stopRequested; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
     if (action === 'cue') { lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
@@ -1002,6 +1022,7 @@ async function runScene() {
     const expected = stripDirections(item.text);
     const soundOnly = isSoundOnly(expected);
     const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly);
+    if (stopRequested) break;
     // Habits he taught the phone for this line and this listener are turned back into script words first.
     // The listener that actually heard this line (Moonshine can hand over to Google mid-scene).
     const lineEngine = runEngine;
@@ -1017,6 +1038,14 @@ async function runScene() {
   stopMoonScene();
   running = false;
   setPaused(false);
+  $('start').textContent = 'Start';
+  showRunNext(true);
+  if (stopRequested) {
+    stopRequested = false;
+    log(`scene stopped; listening restarts: ${restarts}`);
+    setStatus('Stopped. Tap Start to run it again.', '', 'idle');
+    return;
+  }
   log(`scene end; listening restarts: ${restarts}`);
   $('context').open = true;
   setStatus('Scene done. Open "Scene around this line" for every line: ✓ Matched, ? Check, × Needs work.', '', 'done');
@@ -1113,7 +1142,7 @@ async function setup() {
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
-  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };
+  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) { renderScript(); showRunNext(false); } };
   $('file').onchange = async () => {
     const f = $('file').files[0];
     if (!f) return;
@@ -1123,7 +1152,15 @@ async function setup() {
   const savedScript = store.get('ll-script');
   if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
   $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; store.set('ll-gap', $('gap').value); };
-  $('start').onclick = runScene;
+  $('start').onclick = () => (running ? stopRun() : runScene());
+  $('runNext').onclick = () => {
+    const n = Number($('scene').value) + 1;
+    if (!script.scenes[n] || running) return;
+    $('scene').value = n;
+    $('scene').onchange();
+    scrollTo(0, 0);
+    setStatus('Tap Start');
+  };
   $('pause').onclick = pauseTapped;
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
   $('lineBtn').onclick = () => { tapCommand = 'line'; };

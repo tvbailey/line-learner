@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261024d';
+import { stripDirections, cleanText } from './core.js?v=20261024e';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
