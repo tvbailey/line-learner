@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025k';
-import { parseScript } from './script.js?v=20261025k';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025k';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025k';
-import * as voices from './voices.js?v=20261025k';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025l';
+import { parseScript } from './script.js?v=20261025l';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025l';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025l';
+import * as voices from './voices.js?v=20261025l';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -200,8 +200,9 @@ function renderScript() {
   if (lines) renderLines(scene);
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
-  if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
-  else steps = addSkipNotes(joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value)), me));
+  if (recording) steps = recordSteps(scene.items, me, { skipSongs: true, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
+  // The singing always starts out; "Dialogue only" went once any line or song could be tapped in or out (Thomas, 25 Oct 2026).
+  else steps = addSkipNotes(joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: true }), picks(), me, Number($('before').value)), me));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   if (running || !lastRun) showLastResult('', '');
@@ -216,7 +217,19 @@ function renderScript() {
     if (it.kind === 'direction' && next && next.item.kind === 'line') { directions.push(it.text); return; }
     const div = document.createElement('div');
     div.id = 'ln' + i;
-    if (it.kind === 'song') { div.className = 'ln song'; div.textContent = `Song: ${it.title}`; }
+    if (it.kind === 'song') {
+      // The "Song." announcement taps in or out like a line (Thomas, 25 Oct 2026).
+      div.className = 'ln song' + (st.action === 'skip' ? ' skipped' : '');
+      if (!recording && it.id) {
+        div.classList.add('tappable');
+        const pick = document.createElement('span');
+        pick.className = 'pick';
+        pick.textContent = st.action === 'skip' ? 'Out' : 'In';
+        div.append(pick);
+        div.onclick = () => { if (!running) togglePick(it.id, st.action !== 'skip'); };
+      }
+      div.append(document.createTextNode(`Song: ${it.title}`));
+    }
     else if (it.kind === 'summary') { div.className = 'ln song'; div.textContent = `Skipping ahead: ${it.text}`; }
     else if (it.kind === 'direction') { div.className = 'ln song'; div.textContent = `(${it.text})`; }
     else if (it.kind !== 'line') { div.className = 'ln song'; div.textContent = it.kind === 'songEnd' ? '(end of song)' : '(skip)'; }
@@ -749,11 +762,19 @@ function pauseTapped() {
 
 // After his turn, the phone's plain voice reads his line as written, never saying whether he got it
 // right (Thomas, 25 Oct 2026: a recorded voice reading his lines would teach him its delivery).
+// His AI clip plays where there is one (Thomas, 25 Oct 2026: "a plain voice with very little
+// inflection" but not the robot); a joined stretch plays each of its lines in turn.
 async function readBack(item) {
   if ($('hideMine').checked) $('currentLine').textContent = cleanText(item.text);
-  log('  read back as written');
-  await sayOther(stripDirections(item.text), '', null, true); // the plain voice, not his character's (Fable's review)
+  const parts = (item.joined || [item.id]).map((id) => sceneItem(id) || item);
+  log(`  read back as written (${parts.filter((p) => sceneClips.has(p.id)).length} of ${parts.length} in the AI voice)`);
+  // The plain voice, not his character's, where there is no clip (Fable's review).
+  for (const p of parts) {
+    if (!running || stopRequested) return;
+    await sayOther(stripDirections(p.text), '', sceneClips.has(p.id) ? p : null, true);
+  }
 }
+const sceneItem = (id) => script.scenes[Number($('scene').value) || 0].items.find((x) => x.id === id);
 
 // Listen mode's turn for his line: the mic stays off, and he gets about the time it takes to say it
 // in his head before the phone reads it. Pause holds the clock; Line ends the wait; Repeat says the
@@ -783,12 +804,23 @@ async function listenWait(ms) {
 async function loadSceneClips() {
   sceneClips = new Map();
   let cues = 0;
+  let mine = 0, mineVoiced = 0;
   for (const st of steps) {
-    if (st.item.kind !== 'line' || st.action === 'listen' || st.action === 'show') continue;
+    if (st.item.kind !== 'line' || st.action === 'show') continue;
+    // His own lines: the clips his line is read back in (each line of a joined stretch).
+    if (st.action === 'listen') {
+      for (const id of st.item.joined || [st.item.id]) {
+        const it = sceneItem(id);
+        if (!it) continue;
+        mine++;
+        try { const c = await voices.getClip(id); if (voices.clipFits(c, it, prevLineText(it))) { sceneClips.set(id, c); mineVoiced++; } } catch (_) { /* no storage */ }
+      }
+      continue;
+    }
     cues++;
     try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item, prevLineText(st.item))) sceneClips.set(st.item.id, c); } catch (_) { /* no storage */ }
   }
-  return { cues, recorded: sceneClips.size };
+  return { cues, recorded: sceneClips.size - mineVoiced, mine, mineVoiced };
 }
 
 // Start listening for his line. The phone's microphone takes a moment to come on and words said
@@ -1121,7 +1153,7 @@ async function runScene() {
     if (ok) runEngine = `moon-${moon.size}@${MOON_REV}`;
   }
   const rec = await loadSceneClips();
-  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}; recorded voices for ${rec.recorded} of ${rec.cues} cue lines`);
+  log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}; recorded voices for ${rec.recorded} of ${rec.cues} cue lines; your lines in the AI voice: ${rec.mineVoiced} of ${rec.mine}`);
   for (let i = 0; i < steps.length && running && !stopRequested; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
@@ -1218,7 +1250,7 @@ async function copyReport() {
     `settings: mode ${$('mode').value}, wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}, hide my line ${$('hideMine').checked}, read my line after ${$('readBack').checked}, check my lines ${$('checkLines').checked}`,
     `listening restarts: ${restarts}`,
     // His in/out choices (line ids only), so Reginald can see where runs skip.
-    `read before: ${$('before').value}; dialogue only: ${$('skipSongs').checked}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
+    `read before: ${$('before').value}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
     '', ...logLines,
   ].join('\n');
   try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.', '', 'done'); }
@@ -1299,8 +1331,6 @@ async function setup() {
   // Phone habits only matter when lines are checked, so their list shows only then.
   $('checkLines').onchange = () => { store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off'); $('habitsWrap').hidden = !$('checkLines').checked; };
   $('habitsWrap').hidden = !$('checkLines').checked;
-  $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
-  $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
   $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };

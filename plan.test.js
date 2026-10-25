@@ -241,3 +241,14 @@ test('addSkipNotes: a line he kept in the middle of a stretch does not cancel it
   assert.deepEqual(out.filter((s) => s.action !== 'show').map((s) => `${s.action}:${s.item.text}`),
     ['listen:Hi.', 'speak:kept', 'skip:two', 'skip:three', 'skip:four', 'note:The family eats.', 'speak:five', 'listen:Bye.']);
 });
+
+test('pickLines: a song announcement tapped out is not said; tapped back in after trimming, it is (Thomas, 25 Oct 2026)', () => {
+  const items = parseScript('# S\nA: one\n[SONG: Tune]\nB: two\nTHE OLD MAN: Mine.\n[END SONG]\n').scenes[0].items;
+  const song = items[1].id;
+  const steps = planScene(items, 'THE OLD MAN', { skipSongs: true });
+  const show = (s) => s.map((x) => `${x.action}:${x.item.text || x.item.title || x.item.kind}`);
+  assert.deepEqual(show(pickLines(steps, new Map([[song, 'out']]), 'THE OLD MAN', 0)), ['speak:one', 'skip:Tune', 'speak:two', 'listen:Mine.', 'show:songEnd']);
+  // "Read before 1" trims the announcement away; tapping it in brings it back.
+  assert.deepEqual(show(pickLines(steps, new Map(), 'THE OLD MAN', 1)), ['skip:one', 'skip:Tune', 'speak:two', 'listen:Mine.', 'show:songEnd']);
+  assert.deepEqual(show(pickLines(steps, new Map([[song, 'in']]), 'THE OLD MAN', 1)), ['skip:one', 'speak:Tune', 'speak:two', 'listen:Mine.', 'show:songEnd']);
+});

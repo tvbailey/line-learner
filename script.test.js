@@ -78,3 +78,9 @@ test('a [SKIPPED: ...] line is a summary of what a run may skip there', () => {
 test('an unknown bracketed line asks for a refresh rather than a bare "cannot read"', () => {
   assert.throws(() => parseScript('# S\n[SOMETHING NEW: x]\n'), /Refresh the page/);
 });
+
+test('a song marker gets its own stable id, so it can be put in or out of a run (Thomas, 25 Oct 2026)', () => {
+  const song = parseScript(SAMPLE).scenes[0].items[3];
+  assert.ok(song.id, 'song has an id');
+  assert.equal(song.id, parseScript(SAMPLE.replace('MOTHER: Dinner is ready.', 'MOTHER: Dinner is ready, dear.')).scenes[0].items[3].id);
+});

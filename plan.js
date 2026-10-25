@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261025k';
+import { stripDirections, cleanText } from './core.js?v=20261025l';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -14,7 +14,7 @@ const SUNG_TO_PRACTICE = 2;
 // "THE OLD MAN & MOTHER" counts as his; "THE OLD MANAGER" doesn't.
 export const isMine = (item, me) => item.who.split(/\s*(?:&|,)\s*/).includes(me);
 
-// Songs skipped whole under "Dialogue only", spoken lines too: he learns those in the song's own
+// Songs skipped whole (with skipSongs, which the app now always sets), spoken lines too: he learns those in the song's own
 // rehearsal (Thomas, 24 Oct 2026, for this song only, until he has judged the others).
 const SKIP_WHOLE = [/genius on cleveland street/i];
 export const skippedWhole = (song) => SKIP_WHOLE.some((re) => re.test(song.title));
@@ -178,8 +178,8 @@ export function includeLines(steps, ids, me) {
   if (!ids.size) return steps;
   return steps
     .filter((st) => !(st.action === 'cue' && ids.has(st.item.id)))
-    .map((st) => (st.action === 'skip' && st.item.kind === 'line' && ids.has(st.item.id)
-      ? { ...st, action: isMine(st.item, me) ? 'listen' : 'speak', included: true } : st));
+    .map((st) => (st.action === 'skip' && (st.item.kind === 'line' || st.item.kind === 'song') && ids.has(st.item.id)
+      ? { ...st, action: st.item.kind === 'line' && isMine(st.item, me) ? 'listen' : 'speak', included: true } : st));
 }
 
 // His own choices per line, tapped in the script view (Thomas, 24 Oct 2026: "customize each
@@ -190,7 +190,7 @@ export function pickLines(steps, picks, me, keep) {
   const out = (id) => picks.get(id) === 'out';
   const trimmed = trimCues(steps
     .filter((st) => !(st.action === 'cue' && out(st.item.id)))
-    .map((st) => (st.item.kind === 'line' && out(st.item.id) ? { ...st, action: 'skip', excluded: true } : st)), keep);
+    .map((st) => ((st.item.kind === 'line' || st.item.kind === 'song') && out(st.item.id) ? { ...st, action: 'skip', excluded: true } : st)), keep);
   return includeLines(trimmed, new Set([...picks].filter(([, v]) => v === 'in').map(([k]) => k)), me);
 }
 
