@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025e';
-import { parseScript } from './script.js?v=20261025e';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025e';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025e';
-import * as voices from './voices.js?v=20261025e';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025f';
+import { parseScript } from './script.js?v=20261025f';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025f';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025f';
+import * as voices from './voices.js?v=20261025f';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -230,7 +230,7 @@ function renderScript() {
         div.classList.add('tappable');
         pick = document.createElement('span');
         pick.className = 'pick';
-        pick.textContent = st.action === 'skip' ? 'Out next run' : 'In next run';
+        pick.textContent = st.action === 'skip' ? 'Out' : 'In'; // in or out of the next run (shortened, Thomas, 25 Oct 2026)
         div.onclick = (e) => {
           if (e.target.closest('button') || running) return;
           (it.joined || [it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1));
