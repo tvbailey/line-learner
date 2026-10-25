@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024k';
-import { parseScript } from './script.js?v=20261024k';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261024k';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024k';
-import * as voices from './voices.js?v=20261024k';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024l';
+import { parseScript } from './script.js?v=20261024l';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261024l';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024l';
+import * as voices from './voices.js?v=20261024l';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -1018,7 +1018,7 @@ async function runScene() {
     if (action === 'show' || action === 'skip') continue;
     if (action === 'cue') { lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
     // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
-    if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
+    if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
