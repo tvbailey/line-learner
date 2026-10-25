@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025m';
-import { parseScript } from './script.js?v=20261025m';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025m';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025m';
-import * as voices from './voices.js?v=20261025m';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025n';
+import { parseScript } from './script.js?v=20261025n';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025n';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025n';
+import * as voices from './voices.js?v=20261025n';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -289,7 +289,14 @@ function highlight(i) {
     const box = $('script');
     box.scrollTo({ top: el.offsetTop - box.offsetTop - box.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
   }
-  if (steps[i]) showOnStage(steps[i], steps[i + 1]);
+  if (steps[i]) showOnStage(steps[i], nextHeard(i));
+}
+
+// The next step that is said aloud or listened for, past directions and skipped lines, so "Your
+// line is next" shows every time his line comes up (Thomas, 25 Oct 2026: "sometimes it doesn't show").
+function nextHeard(i) {
+  for (let j = i + 1; j < steps.length; j++) if (!['show', 'skip', 'note'].includes(steps[j].action)) return steps[j];
+  return null;
 }
 
 // The last run's results, kept by line id so the list can be redrawn (a view switch, a settings
@@ -726,7 +733,7 @@ function showRunNext(show) {
 // the phone's voice. Listening is off until it has finished playing.
 // Pause during a cue stops the voice at once; Resume says that line again from the top.
 let inCue = false;
-async function sayOther(text, who = '', item = null, written = false) {
+async function sayOther(text, who = '', item = null, written = false, mineNext = false) {
   stopListening();
   inCue = true;
   try {
@@ -734,7 +741,7 @@ async function sayOther(text, who = '', item = null, written = false) {
       while (paused && running && !stopRequested) await new Promise((r) => setTimeout(r, 150));
       if (!running || stopRequested) return;
       if (written) setStatus('Your line as written', '', 'written');
-      else setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
+      else setStatus((who ? `${who} is speaking` : 'Reading the cue...') + (mineNext ? '. Your line is next.' : ''), '', 'cue');
       const clip = item && sceneClips.get(item.id);
       let played = false;
       if (clip) {
@@ -1166,7 +1173,8 @@ async function runScene() {
   for (let i = 0; i < steps.length && running && !stopRequested; i++) {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
-    if (action === 'cue') { lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
+    // The cue right before his line shows on the stage too, with "Your line is next".
+    if (action === 'cue') { highlight(i); lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item, false, true); continue; }
     // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
     if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
     highlight(i);
@@ -1174,7 +1182,8 @@ async function runScene() {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
       lastCue = stripDirections(item.text);
       lastCueItem = item;
-      await sayOther(item.text, item.who, item);
+      const n = nextHeard(i);
+      await sayOther(item.text, item.who, item, false, !!n && n.action === 'listen');
       continue;
     }
     const expected = stripDirections(item.text);
