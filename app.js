@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024g';
-import { parseScript } from './script.js?v=20261024g';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns } from './plan.js?v=20261024g';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024g';
-import * as voices from './voices.js?v=20261024g';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024h';
+import { parseScript } from './script.js?v=20261024h';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns } from './plan.js?v=20261024h';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024h';
+import * as voices from './voices.js?v=20261024h';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -1081,6 +1081,8 @@ async function copyReport() {
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
     `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}`,
     `listening restarts: ${restarts}`,
+    // His in/out choices (line ids only), so Reginald can see where runs skip.
+    `read before: ${$('before').value}; dialogue only: ${$('skipSongs').checked}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
     '', ...logLines,
   ].join('\n');
   try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.', '', 'done'); }
