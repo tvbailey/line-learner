@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines } from './plan.js';
+import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines, joinMyRuns } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -204,4 +204,19 @@ test('lines only leaves out his lines he tapped out', () => {
   const items = parseScript('# S\nMOTHER: Hi.\nTHE OLD MAN: Keep.\nTHE OLD MAN: Drop me.\nMOTHER: So?\nTHE OLD MAN: Last.\n').scenes[0].items;
   assert.deepEqual(linesOnly(items, 'THE OLD MAN', new Set([items[2].id])).map((r) => `${r.kind}:${r.text}`),
     ['cue:Hi.', 'mine:Keep.', 'cue:So?', 'mine:Last.']);
+});
+
+test('joinMyRuns: his lines split only by stage directions become one line to say (Thomas, 24 Oct 2026)', () => {
+  const items = parseScript('# S\nMOTHER: The furnace.\nTHE OLD MAN: Consarned!\n(He storms off.)\nTHE OLD MAN: Far-fangled!\n(Crash.)\nTHE OLD MAN: Who left the skates?\nMOTHER: Me.\nTHE OLD MAN: Hmph.\n').scenes[0].items;
+  const out = joinMyRuns(planScene(items, 'THE OLD MAN'), 'THE OLD MAN');
+  assert.deepEqual(out.map((s) => `${s.action}:${s.item.text}`),
+    ['speak:The furnace.', 'listen:Consarned! (He storms off.) Far-fangled! (Crash.) Who left the skates?', 'speak:Me.', 'listen:Hmph.']);
+  assert.equal(out[1].item.id, items[1].id);
+  assert.deepEqual(out[1].item.joined, [items[1].id, items[3].id, items[5].id]);
+});
+
+test('joinMyRuns: a cue, a song marker, or a sung line between keeps them apart', () => {
+  const items = parseScript('# S\nTHE OLD MAN: One.\n[SONG: G]\nTHE OLD MAN: Two.\nTHE OLD MAN: ~ LA\nTHE OLD MAN: Three.\n').scenes[0].items;
+  assert.deepEqual(joinMyRuns(planScene(items, 'THE OLD MAN'), 'THE OLD MAN').filter((s) => s.action === 'listen').map((s) => s.item.text),
+    ['One.', 'Two.', 'LA', 'Three.']);
 });

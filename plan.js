@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261024f';
+import { stripDirections, cleanText } from './core.js?v=20261024g';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -192,4 +192,33 @@ export function pickLines(steps, picks, me, keep) {
     .filter((st) => !(st.action === 'cue' && out(st.item.id)))
     .map((st) => (st.item.kind === 'line' && out(st.item.id) ? { ...st, action: 'skip', excluded: true } : st)), keep);
   return includeLines(trimmed, new Set([...picks].filter(([, v]) => v === 'in').map(([k]) => k)), me);
+}
+
+// His lines with only stage directions between them are one stretch to say (Thomas, 24 Oct 2026:
+// three lines after "I think it was the furnace" each waited for a pause). The run listens for the
+// whole stretch as one line, under the first line's id; the directions stay in it, in parentheses,
+// where the checker ignores them. Anything else between (a cue, a song marker, singing) splits it.
+export function joinMyRuns(steps, me) {
+  const out = [];
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    if (st.action !== 'listen' || st.item.sung || !isMine(st.item, me)) { out.push(st); continue; }
+    let text = st.item.text;
+    const joined = [st.item.id];
+    let j = i + 1;
+    for (;;) {
+      let k = j;
+      const dirs = [];
+      while (k < steps.length && steps[k].action === 'show' && steps[k].item.kind === 'direction') dirs.push(steps[k++].item.text);
+      const next = steps[k];
+      if (!next || next.action !== 'listen' || next.item.sung || !isMine(next.item, me)) break;
+      text += dirs.map((d) => ` (${d})`).join('') + ' ' + next.item.text;
+      joined.push(next.item.id);
+      j = k + 1;
+    }
+    if (joined.length === 1) { out.push(st); continue; }
+    out.push({ ...st, item: { ...st.item, text, joined } });
+    i = j - 1;
+  }
+  return out;
 }

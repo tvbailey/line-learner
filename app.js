@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024f';
-import { parseScript } from './script.js?v=20261024f';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024f';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024f';
-import * as voices from './voices.js?v=20261024f';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024g';
+import { parseScript } from './script.js?v=20261024g';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns } from './plan.js?v=20261024g';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024g';
+import * as voices from './voices.js?v=20261024g';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -188,7 +188,7 @@ function renderScript() {
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
-  else steps = pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value));
+  else steps = joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value)), me);
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   showLastResult('', '');
@@ -221,7 +221,7 @@ function renderScript() {
           // With a finished run's results on screen, change only this row (it counts from the
           // next run) rather than redraw the list and lose the results.
           const keepResults = !!$('script').querySelector('.result');
-          togglePick(it.id, inRun, !keepResults);
+          (it.joined || [it.id]).forEach((id, n, all) => togglePick(id, inRun, !keepResults && n === all.length - 1));
           if (!keepResults) return;
           inRun = !inRun;
           div.classList.toggle('skipped', !inRun);
@@ -707,7 +707,7 @@ function listenForLine() {
 }
 
 // Wait for one of his lines, handling commands, until he says a real line.
-function awaitMyLine(expected, soundOnly = false) {
+function awaitMyLine(expected, soundOnly = false, stretch = false) {
   return new Promise((resolve) => {
     let promptLevel = 0;
     let busy = false;
@@ -727,7 +727,9 @@ function awaitMyLine(expected, soundOnly = false) {
         const lastHeard = soundOnly ? Math.max(lastSpeechAt, lastSoundAt) : lastSpeechAt;
         // Commands and sound-only lines use the plain wait; lines wait less once their end is heard.
         const endHeard = soundOnly || detectCommand(utterance) ? undefined : lineEndHeard(expected, utterance);
-        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gapMs(), listeningSince, endHeard })) return;
+        // A joined stretch (joinMyRuns) has his own pauses in it: wait twice as long until its end is heard.
+        const gap = stretch && !endHeard ? gapMs() * 2 : gapMs();
+        if (!isLineFinished({ heardSomething, lastSpeechAt: lastHeard, now: Date.now(), gapMs: gap, listeningSince, endHeard })) return;
         cmd = detectCommand(utterance);
         // A restart he never spoke after may still have swallowed his last words.
         phoneRestarts = midLineRestarts + (restartPending ? 1 : 0);
@@ -1022,7 +1024,7 @@ async function runScene() {
     }
     const expected = stripDirections(item.text);
     const soundOnly = isSoundOnly(expected);
-    const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly);
+    const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly, !!item.joined);
     if (stopRequested) break;
     // Habits he taught the phone for this line and this listener are turned back into script words first.
     // The listener that actually heard this line (Moonshine can hand over to Google mid-scene).
