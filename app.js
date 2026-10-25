@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025d';
-import { parseScript } from './script.js?v=20261025d';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025d';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025d';
-import * as voices from './voices.js?v=20261025d';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025e';
+import { parseScript } from './script.js?v=20261025e';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025e';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025e';
+import * as voices from './voices.js?v=20261025e';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -78,7 +78,7 @@ function showOnStage(st, next) {
     const mine = st.action === 'listen';
     $('speaker').textContent = it.who + (it.sung ? ' (sung)' : '') + (mine ? ' / you' : '');
     // "Hide my line during a run" (Thomas, 25 Oct 2026): recall it; Line shows it a piece at a time.
-    if (mine && $('hideMine').checked) {
+    if (mine && $('mode').value === 'run' && $('hideMine').checked) {
       const s = document.createElement('span');
       s.className = 'hidden-line';
       s.textContent = 'Your line. Say or tap "Line" to see it.';
@@ -201,7 +201,7 @@ function renderScript() {
   else steps = addSkipNotes(joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value)), me));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
-  showLastResult('', '');
+  if (running || !lastRun) showLastResult('', '');
   // A stage direction rides on the line after it, as a small note, instead of a row of its own
   // (Thomas, 4 Oct 2026: separate rows made the script feel chopped into sections).
   let directions = [];
@@ -283,7 +283,7 @@ let lastRun = null;
 
 function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, expected = '', lineEngine = 'google') {
   const row = { heard, result, prompted, phoneRestarts, item, expected, lineEngine, marked: null };
-  if (lastRun && item) lastRun.rows.set(item.id, row);
+  if (lastRun && item) (item.joined || [item.id]).forEach((id) => lastRun.rows.set(id, row));
   const kind = renderResult(i, row);
   showLastResult(kind, RESULT_WORD[kind]);
   renderTally();
@@ -364,7 +364,7 @@ function renderTally() {
   let text = '';
   if (show) {
     const n = { ok: 0, check: 0, bad: 0 };
-    for (const row of lastRun.rows.values()) n[resultKind(row)]++;
+    for (const row of new Set(lastRun.rows.values())) n[resultKind(row)]++; // a joined stretch is stored under each member
     text = `This run: ${n.ok} matched, ${n.check} check, ${n.bad} needs work${lastRun.stopped ? ' (stopped early)' : running ? ' so far' : ''}.`;
   }
   for (const id of ['tally', 'tally2']) { $(id).textContent = text; $(id).hidden = !show; }
@@ -1060,6 +1060,10 @@ async function runScene() {
   document.body.classList.add('running');
   $('start').textContent = 'Stop';
   showRunNext(false);
+  // Whatever goes wrong inside the run, the clean-up below runs, so the app never stays stuck in
+  // "running" (Fable's review, 25 Oct 2026).
+  let failed = null;
+  try {
   store.set('ll-gap', $('gap').value);
   renderScript();
   await keepAwake();
@@ -1103,19 +1107,27 @@ async function runScene() {
     if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
     showHeard(i, heard, result, prompted, phoneRestarts, item, expected, lineEngine);
   }
-  stopListening();
-  stopMoonScene();
+  } catch (err) { failed = err; log(`run stopped by an error: ${err.message}`); }
+  try { stopListening(); } catch (_) { /* already stopped */ }
+  try { stopMoonScene(); } catch (_) { /* already stopped */ }
   running = false;
   setPaused(false);
   $('start').textContent = 'Start';
   document.body.classList.remove('running');
   showRunNext(true);
+  if (failed) {
+    stopRequested = false;
+    lastRun.stopped = true;
+    renderTally();
+    setStatus(`Something went wrong (${failed.message}). Tap Start to try again.`, '', 'problem');
+    return;
+  }
   if (stopRequested) {
     stopRequested = false;
     lastRun.stopped = true;
     renderTally();
     log(`scene stopped; listening restarts: ${restarts}`);
-    setStatus('Stopped. Results so far are below.', '', 'idle');
+    setStatus(lastRun.rows.size ? 'Stopped. Results so far are below.' : 'Stopped. Tap Start to run it again.', '', 'idle');
     return;
   }
   renderTally();
@@ -1186,7 +1198,7 @@ async function setup() {
     if (running) { $('mode').value = store.get('ll-mode') || 'run'; syncMode(); return; }
     store.set('ll-mode', $('mode').value); syncMode(); renderScript();
   };
-  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); }; });
+  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); if (b.dataset.mode === 'record' && $('mode').value === 'record') { scrollTo(0, 0); setStatus('Record voices: tap Start, then read each line.', '', 'idle'); } }; });
   syncMode();
   // Lines only has its own scene list at the top; it and the one below stay the same.
   $('linesScene').onchange = () => { $('scene').value = $('linesScene').value; $('scene').onchange(); };

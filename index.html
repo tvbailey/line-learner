@@ -129,6 +129,7 @@
                padding: 10px max(16px, calc((100vw - 560px) / 2)) max(12px, env(safe-area-inset-bottom)); max-height: 75vh; overflow-y: auto;
                box-shadow: 0 -8px 24px rgba(0,0,0,.25); }
   body.recording main { padding-bottom: 60vh; }
+  body.recording .script { max-height: 55vh; overflow-y: auto; }
   .rec-who { font-weight: 750; font-size: .875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
   .rec-line { font-size: 1.35rem; font-weight: 700; line-height: 1.35; margin: 4px 0 10px; }
   .rec-next { width: 100%; min-height: 72px; font-size: 1.25rem; }
@@ -143,8 +144,8 @@
   .habit-list button { min-height: 48px; margin-left: 8px; padding: 6px 12px; }
   .ln .mark-right { display: block; margin-top: 8px; }
   .duo button { min-height: 64px; }
-  .duo button[aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); padding: 9px 13px; }
-  .duo button[aria-pressed="true"]::before { content: "\2713\00a0"; font-weight: 900; }
+  [data-mode][aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); padding: 9px 13px; }
+  [data-mode][aria-pressed="true"]::before { content: "\2713\00a0"; font-weight: 900; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* A whole settings row is the tap target, not just the small box inside it. */
   .setting { display: flex; gap: 14px; align-items: center; min-height: 52px; margin: 6px 0; font-weight: 650; cursor: pointer; }
@@ -329,6 +330,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025d"></script>
+<script type="module" src="app.js?v=20261025e"></script>
 </body>
 </html>
