@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025a';
-import { parseScript } from './script.js?v=20261025a';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025a';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025a';
-import * as voices from './voices.js?v=20261025a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025d';
+import { parseScript } from './script.js?v=20261025d';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025d';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025d';
+import * as voices from './voices.js?v=20261025d';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -77,6 +77,15 @@ function showOnStage(st, next) {
   else {
     const mine = st.action === 'listen';
     $('speaker').textContent = it.who + (it.sung ? ' (sung)' : '') + (mine ? ' / you' : '');
+    // "Hide my line during a run" (Thomas, 25 Oct 2026): recall it; Line shows it a piece at a time.
+    if (mine && $('hideMine').checked) {
+      const s = document.createElement('span');
+      s.className = 'hidden-line';
+      s.textContent = 'Your line. Say or tap "Line" to see it.';
+      line.append(s);
+      $('lineNote').textContent = '';
+      return;
+    }
     for (const piece of it.text.split(/(\{[^}]*\})/)) {
       if (!piece) continue;
       if (piece.startsWith('{')) { const m = document.createElement('mark'); m.textContent = piece.slice(1, -1); line.append(m); }
@@ -212,31 +221,33 @@ function renderScript() {
       div.className = 'ln' + (it.who === me ? ' mine' : '') + (st.action === 'skip' ? ' skipped' : '');
       const who = document.createElement('span');
       who.className = 'who';
-      who.textContent = it.who + (it.sung ? ' (sung)' : '')
-        + (st.excluded ? ' - left out by you, tap to include' : st.action === 'skip' ? ' - skipped, tap to include'
-          : st.included ? ' - included by you, tap to skip' : '');
-      // Any line, his or not, taps in or out of the run (Thomas, 24 Oct 2026).
+      who.textContent = it.who + (it.sung ? ' (sung)' : '');
+      // Any line, his or not, taps in or out of the next run (Thomas, 24 Oct 2026); a readable label
+      // says which, apart from the results marks (Astra's review, 25 Oct 2026). Results are kept by
+      // line (lastRun), so redrawing the list after a tap no longer loses them.
+      let pick = null;
       if (!recording) {
         div.classList.add('tappable');
-        let inRun = st.action !== 'skip';
+        pick = document.createElement('span');
+        pick.className = 'pick';
+        pick.textContent = st.action === 'skip' ? 'Out next run' : 'In next run';
         div.onclick = (e) => {
           if (e.target.closest('button') || running) return;
-          // With a finished run's results on screen, change only this row (it counts from the
-          // next run) rather than redraw the list and lose the results.
-          const keepResults = !!$('script').querySelector('.result');
-          (it.joined || [it.id]).forEach((id, n, all) => togglePick(id, inRun, !keepResults && n === all.length - 1));
-          if (!keepResults) return;
-          inRun = !inRun;
-          div.classList.toggle('skipped', !inRun);
-          who.textContent = it.who + (it.sung ? ' (sung)' : '') + (inRun ? ' - included by you (next run), tap to skip' : ' - left out by you (next run), tap to include');
+          (it.joined || [it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1));
         };
       }
+      if (pick) div.append(pick);
       for (const d of directions) { const s = document.createElement('span'); s.className = 'dir'; s.textContent = `(${d})`; div.append(s); }
       directions = [];
       div.append(who, document.createTextNode(cleanText(it.text)));
     }
     $('script').append(div);
   });
+  // The last run's results come back on every redraw until the next run starts (Astra, 25 Oct 2026).
+  if (!recording && lastRun && lastRun.scene === $('scene').value) {
+    steps.forEach((st, i) => { const row = st.item.kind === 'line' && lastRun.rows.get(st.item.id); if (row) renderResult(i, row); });
+  }
+  renderTally();
   showRunNext(!running);
   markRecorded();
 }
@@ -265,28 +276,57 @@ function highlight(i) {
   if (steps[i]) showOnStage(steps[i], steps[i + 1]);
 }
 
+// The last run's results, kept by line id so the list can be redrawn (a view switch, a settings
+// change, a tap in or out) without losing them; replaced when the next run starts (Astra's review,
+// 25 Oct 2026). { scene, stopped, rows: Map(id -> what showHeard was told, plus marked) }.
+let lastRun = null;
+
 function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, expected = '', lineEngine = 'google') {
+  const row = { heard, result, prompted, phoneRestarts, item, expected, lineEngine, marked: null };
+  if (lastRun && item) lastRun.rows.set(item.id, row);
+  const kind = renderResult(i, row);
+  showLastResult(kind, RESULT_WORD[kind]);
+  renderTally();
+}
+
+function resultKind(row) {
+  const { result, prompted, phoneRestarts } = row;
+  if (row.marked) return 'ok';
+  let kind = result.match && !prompted ? 'ok' : 'bad';
+  if (result.likelyMishearing && !prompted) kind = 'check';
+  if (!result.match && phoneRestarts && !prompted) kind = 'check';
+  if (result.checkMadeUp && !prompted && !result.missing.length && !result.extra.length) kind = 'check';
+  return kind;
+}
+
+// Draws one line's result into its row; returns the kind (ok / check / bad).
+function renderResult(i, row) {
   const el = $('ln' + i);
+  if (!el) return resultKind(row);
+  const { heard, result, prompted, phoneRestarts, item, expected, lineEngine } = row;
   const ok = result.match && !prompted;
-  let kind = ok ? 'ok' : 'bad';
   let note = heard ? `Heard: "${heard}"` : 'Heard: a sound (no words needed for this line)';
   if (result.habitUsed) note += ` (a phone habit you taught it was allowed${result.habitUsed > 1 ? `, ${result.habitUsed} of them` : ''})`;
   if (prompted) note += ' (you asked for "line")';
   if (result.restarted) note += ' (you restarted, then got it)';
   if (result.missing.length || result.extra.length) note += ` | missing: ${result.missing.join(' ') || 'none'} | extra: ${result.extra.join(' ') || 'none'}`;
-  if (result.likelyMishearing && !prompted) { note += ' | probably the phone mishearing'; kind = 'check'; }
+  if (result.likelyMishearing && !prompted) note += ' | probably the phone mishearing';
   // The phone stopped listening partway through: missing or doubled words may be the phone's, not his.
-  if (!result.match && phoneRestarts && !prompted) { note += ` | the phone stopped listening ${phoneRestarts === 1 ? 'once' : phoneRestarts + ' times'} during this line, so some words may not have reached it`; kind = 'check'; }
-  if (result.checkMadeUp && !prompted && !result.missing.length && !result.extra.length) kind = 'check';
-  const mark = badge(kind);
+  if (!result.match && phoneRestarts && !prompted) note += ` | the phone stopped listening ${phoneRestarts === 1 ? 'once' : phoneRestarts + ' times'} during this line, so some words may not have reached it`;
+  const kind = resultKind(row);
+  const mark = row.marked ? badge('ok', 'You said it right') : badge(kind);
   mark.classList.add('result');
   const span = document.createElement('span');
-  span.className = 'heard ' + kind;
+  span.className = 'heard' + (row.marked ? '' : ' ' + kind);
   span.textContent = note;
   el.append(mark, span);
-  showLastResult(kind, RESULT_WORD[kind]);
-  // He knows he said it right: mark it so, and teach the phone's habit for this line.
-  if (!ok && !prompted && item && heard) {
+  if (row.marked) {
+    const done = document.createElement('span');
+    done.className = 'heard ok';
+    done.textContent = row.marked;
+    el.append(done);
+  } else if (!ok && !prompted && item && heard) {
+    // He knows he said it right: mark it so, and teach the phone's habit for this line.
     const btn = document.createElement('button');
     btn.className = 'mark-right';
     btn.textContent = 'I said it right';
@@ -301,6 +341,7 @@ function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, e
           msg = `Learned for this line: the phone hears ${spans.map((s) => `"${s.heard.join(' ')}" for "${s.written.join(' ')}"`).join(', ')}.`;
         }
       } catch (err) { msg = `Marked right, but the habit could not be saved: ${err.message}`; }
+      row.marked = msg;
       mark.className = 'badge ok result';
       mark.textContent = '✓ You said it right';
       const done = document.createElement('span');
@@ -308,10 +349,25 @@ function showHeard(i, heard, result, prompted, phoneRestarts = 0, item = null, e
       done.textContent = msg;
       btn.replaceWith(done);
       log(`line ${i}: he says it was right; ${spans.length ? `learned ${spans.length} habit(s) for ${lineEngine}` : 'nothing to learn'}`);
+      renderTally();
       refreshVoicesBox();
     };
     el.append(btn);
   }
+  return kind;
+}
+
+// "This run: 12 matched, 3 check, 1 needs work", on the stage and above the results, for the scene
+// on screen; it counts each stretch he said (joined lines count once).
+function renderTally() {
+  const show = lastRun && lastRun.rows.size && lastRun.scene === $('scene').value && $('mode').value !== 'record';
+  let text = '';
+  if (show) {
+    const n = { ok: 0, check: 0, bad: 0 };
+    for (const row of lastRun.rows.values()) n[resultKind(row)]++;
+    text = `This run: ${n.ok} matched, ${n.check} check, ${n.bad} needs work${lastRun.stopped ? ' (stopped early)' : running ? ' so far' : ''}.`;
+  }
+  for (const id of ['tally', 'tally2']) { $(id).textContent = text; $(id).hidden = !show; }
 }
 
 // ---------- speaking ----------
@@ -745,6 +801,8 @@ function awaitMyLine(expected, soundOnly = false, stretch = false) {
       if (cmd === 'resume') { if (paused) { setPaused(false); log('resumed'); } setStatus('Your line. Listening...', 'listening'); busy = false; return; }
       if (cmd === 'line' || cmd === 'repeat') {
         const text = cmd === 'line' ? promptText(expected, ++promptLevel) : lastCue;
+        // With his line hidden, the prompt shows on screen too.
+        if (cmd === 'line' && $('hideMine').checked) $('currentLine').textContent = text;
         log(cmd === 'line' ? `prompt level ${promptLevel}` : 'repeating the cue');
         stopListening();
         const clip = cmd === 'repeat' && lastCueItem && sceneClips.get(lastCueItem.id);
@@ -998,6 +1056,8 @@ async function runScene() {
   if ($('mode').value === 'lines') return;
   if ($('mode').value === 'record') return runRecord();
   running = true; stopRequested = false; setPaused(false); restarts = 0;
+  lastRun = { scene: $('scene').value, stopped: false, rows: new Map() };
+  document.body.classList.add('running');
   $('start').textContent = 'Stop';
   showRunNext(false);
   store.set('ll-gap', $('gap').value);
@@ -1048,16 +1108,20 @@ async function runScene() {
   running = false;
   setPaused(false);
   $('start').textContent = 'Start';
+  document.body.classList.remove('running');
   showRunNext(true);
   if (stopRequested) {
     stopRequested = false;
+    lastRun.stopped = true;
+    renderTally();
     log(`scene stopped; listening restarts: ${restarts}`);
-    setStatus('Stopped. Tap Start to run it again.', '', 'idle');
+    setStatus('Stopped. Results so far are below.', '', 'idle');
     return;
   }
+  renderTally();
   log(`scene end; listening restarts: ${restarts}`);
   $('context').open = true;
-  setStatus('Scene done. Open "Scene around this line" for every line: ✓ Matched, ? Check, × Needs work.', '', 'done');
+  setStatus('Scene done. Results are below.', '', 'done');
 }
 
 // ---------- screen awake, network ----------
@@ -1085,7 +1149,7 @@ async function copyReport() {
     `when: ${new Date().toString()}`,
     `browser: ${navigator.userAgent}`,
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
-    `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}`,
+    `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}, hide my line ${$('hideMine').checked}`,
     `listening restarts: ${restarts}`,
     // His in/out choices (line ids only), so Reginald can see where runs skip.
     `read before: ${$('before').value}; dialogue only: ${$('skipSongs').checked}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
@@ -1093,6 +1157,17 @@ async function copyReport() {
   ].join('\n');
   try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.', '', 'done'); }
   catch (_) { setStatus('Copy failed; open the Event log and copy it by hand.', '', 'problem'); }
+}
+
+// Settings that only matter when Google listens stay out of sight otherwise (25 Oct 2026).
+let localOffered = false;
+function syncEngineSettings() {
+  const google = engine() === 'google';
+  if ($('contWrap')) $('contWrap').hidden = !google;
+  $('localWrap').hidden = !google || !localOffered;
+  $('engineNote').textContent = google
+    ? 'Google stops at each pause with a ding. "This phone" listening keeps the mic on and nothing leaves the phone.'
+    : 'The mic stays on for the scene (no dings) and nothing leaves the phone. It downloads once.';
 }
 
 // ---------- setup ----------
@@ -1149,6 +1224,8 @@ async function setup() {
     // The listener opened the mic with the old setting; reload it before the next scene.
     if (moon && !running) { try { moon.mic.close(); } catch (_) { /* already closed */ } moon = null; }
   };
+  $('hideMine').checked = store.get('ll-hide-mine') === 'on';
+  $('hideMine').onchange = () => store.set('ll-hide-mine', $('hideMine').checked ? 'on' : 'off');
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
@@ -1192,12 +1269,14 @@ async function setup() {
   const savedEngine = store.get('ll-engine');
   if (savedEngine && [...$('engine').options].some((o) => o.value === savedEngine)) $('engine').value = savedEngine;
   $('engine').onchange = () => {
+    syncEngineSettings();
     store.set('ll-engine', $('engine').value);
     // Fetch the model now, while he's still in settings, rather than at Start.
     if (engine() !== 'google' && !running && !SIM) loadMoon().then((ok) => { if (!running) setStatus(ok ? 'On-phone listener ready. Tap Start.' : 'On-phone listener unavailable; using Google.', '', 'idle'); });
   };
 
   const cont = document.createElement('label');
+  cont.id = 'contWrap';
   cont.className = 'setting';
   cont.innerHTML = '<input id="continuous" type="checkbox"><span>Continuous listening<small class="note">Try it if the phone cuts you off</small></span>';
   $('localWrap').before(cont);
@@ -1212,11 +1291,12 @@ async function setup() {
       try {
         const status = await R.available({ langs: ['en-US'], processLocally: true });
         log(`on-phone listening: ${status}`);
-        if (status !== 'unavailable') $('localWrap').hidden = false;
+        if (status !== 'unavailable') localOffered = true;
         else $('local').checked = false;
       } catch (err) { log(`on-phone check failed: ${err.message}`); }
     }
   } else log('on-phone listening: not offered by this browser');
+  syncEngineSettings();
   if (!R && !SIM) setStatus('This browser cannot listen. Open it in Chrome.', '', 'problem');
 
   if (SIM) {

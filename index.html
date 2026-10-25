@@ -45,13 +45,13 @@
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
   [hidden] { display: none !important; }
 
-  .brand { display: flex; align-items: center; gap: 10px; padding: 14px 0 6px; font-size: .8rem; font-weight: 750;
+  .brand { display: flex; align-items: center; gap: 10px; padding: 14px 0 6px; font-size: .875rem; font-weight: 750;
            letter-spacing: .15em; text-transform: uppercase; white-space: nowrap; }
   .brand svg { width: 26px; height: 24px; flex: none; color: var(--accent); }
-  .brand .scene-name { margin-left: auto; font-size: .75rem; letter-spacing: 0; text-transform: none; font-weight: 500;
+  .brand .scene-name { margin-left: auto; font-size: .875rem; letter-spacing: 0; text-transform: none; font-weight: 500;
                        color: var(--muted); text-align: right; overflow-wrap: anywhere; }
   .brand #theme { min-width: 48px; padding: 8px 12px; font-size: .8rem; letter-spacing: 0; text-transform: none; }
-  .eyebrow { font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--muted); }
+  .eyebrow { font-size: .875rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--muted); }
   .note { font-size: .9rem; color: var(--muted); }
 
   /* The stage: the turn band stays put at the top of the screen; the current line sits under it. */
@@ -90,13 +90,30 @@
   details > :not(summary) { margin-bottom: 14px; }
   .script { max-height: 55vh; overflow-y: auto; padding-right: 4px; }
   .ln { padding: 12px 12px; border-radius: 10px; margin: 6px 0; border-left: 4px solid transparent; font-size: 1.05rem; }
-  .ln .who { font-weight: 700; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 2px; }
+  .ln .who { font-weight: 700; font-size: .875rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 2px; }
   .ln.mine { background: var(--surface); border-left-color: var(--accent); }
   .ln.song { font-style: italic; color: var(--muted); }
   .ln .dir { display: block; font-style: italic; font-size: .9rem; color: var(--muted); margin-bottom: 4px; }
   .ln.now { outline: 3px solid var(--accent); outline-offset: -3px; }
-  .ln.skipped { opacity: .6; }
+  .ln.skipped { color: var(--muted); border-left: 4px dashed var(--rule); }
+  .ln.mine.skipped { background: transparent; }
   .ln.tappable { cursor: pointer; }
+  /* In or out of the next run: a readable label, apart from the results marks (25 Oct 2026). */
+  .ln .pick { float: right; margin-left: 8px; font-size: .875rem; font-weight: 650; padding: 2px 10px; border-radius: 999px;
+              border: 1px solid var(--rule); color: var(--ink); background: var(--bg); }
+  .ln.skipped .pick { border-style: dashed; color: var(--muted); }
+  .pick-hint { margin: 0 0 8px; }
+  .tally { font-weight: 700; margin-top: 8px; }
+  /* Between runs: the results list runs full length with the page, and the turn band and stage are
+     compact; during a run they are full size and the list scrolls in its own box. */
+  body:not(.running) .script { max-height: none; overflow: visible; }
+  body:not(.running) .turn { padding: 8px 20px; }
+  body:not(.running) .turn h1 { font-size: 1.35rem; }
+  body:not(.running) .turn p { margin-top: 4px; font-size: .95rem; }
+  body:not(.running) .stage { min-height: 0; padding-top: 12px; }
+  body:not(.running) .line { font-size: 1.3rem; }
+  body:not(.running) .stage .note:empty, body:not(.running) #lastResult:empty { display: none; }
+  .line .hidden-line { color: var(--muted); font-style: italic; }
   .ln .result { display: block; margin-top: 10px; }
   .ln .heard { display: block; font-size: .95rem; margin-top: 6px; }
   .actions { display: grid; gap: 8px; padding: 14px 0 0; }
@@ -112,7 +129,7 @@
                padding: 10px max(16px, calc((100vw - 560px) / 2)) max(12px, env(safe-area-inset-bottom)); max-height: 75vh; overflow-y: auto;
                box-shadow: 0 -8px 24px rgba(0,0,0,.25); }
   body.recording main { padding-bottom: 60vh; }
-  .rec-who { font-weight: 750; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  .rec-who { font-weight: 750; font-size: .875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
   .rec-line { font-size: 1.35rem; font-weight: 700; line-height: 1.35; margin: 4px 0 10px; }
   .rec-next { width: 100%; min-height: 72px; font-size: 1.25rem; }
   .rec-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
@@ -140,8 +157,7 @@
          overflow-y: auto; background: var(--surface); padding: 8px; border-radius: 8px; }
 
   /* Lines only: the words to learn and nothing else. */
-  .duo.trio { grid-template-columns: 1fr 1fr 1fr; }
-  .duo.trio button { padding: 8px 6px; }
+  .rec-mode { width: 100%; margin: 4px 0 14px; }
   body.lines-mode #turn, body.lines-mode .stage, body.lines-mode #runControls, body.lines-mode .voice-hint,
   body.lines-mode #context, body.lines-mode .actions, body.lines-mode #settings, body.lines-mode #sim { display: none !important; }
   .lines-view { padding: 10px 0 6px; }
@@ -155,7 +171,7 @@
   .lo-mine { font-size: 1.3rem; line-height: 1.4; font-weight: 650; padding: 8px 12px; margin: 2px 0 6px;
              border-left: 4px solid var(--accent); background: var(--surface); border-radius: 8px; }
   .lo-cue { color: var(--muted); font-size: 1rem; padding: 14px 12px 2px; }
-  .lo-cue .who { font-weight: 700; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
+  .lo-cue .who { font-weight: 700; font-size: .875rem; letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
   .lo-break, .lo-context { color: var(--muted); font-style: italic; font-size: .92rem; padding: 10px 12px 2px; }
   .lo-context { font-size: 1rem; }
   .covered .lo-mine { cursor: pointer; }
@@ -184,6 +200,7 @@
     <p class="line" id="currentLine">Pick a scene below, then tap Start.</p>
     <p class="note" id="lineNote"></p>
     <p id="lastResult" class="badge"></p>
+    <p id="tally" class="tally" hidden></p>
   </div>
 
   <!-- Lines only: his spoken lines in order, each after a short cue (Thomas, 10 Oct 2026). -->
@@ -239,15 +256,16 @@
 
   <details id="context">
     <summary>Scene around this line</summary>
+    <p id="tally2" class="tally" hidden></p>
+    <p class="note pick-hint">Tap any line to put it in or out of your next run.</p>
     <div id="script" class="script"></div>
   </details>
   <div class="actions"><button id="runNext2" hidden>Next scene</button><button id="copy">Copy report</button></div>
 
   <div class="role"><span class="eyebrow">Your part</span><b id="role">&nbsp;</b></div>
   <label id="modeLabel">Practice mode</label>
-  <div class="duo trio" role="group" aria-labelledby="modeLabel">
+  <div class="duo" role="group" aria-labelledby="modeLabel">
     <button type="button" data-mode="run" aria-pressed="true">Run the scene</button>
-    <button type="button" data-mode="record" aria-pressed="false">Record voices</button>
     <button type="button" data-mode="lines" aria-pressed="false">Lines only</button>
   </div>
   <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
@@ -262,6 +280,7 @@
     </select>
     <p id="engineNote" class="note">Moonshine keeps the mic on (no dings) and nothing leaves the phone. It downloads once.</p>
     <label class="setting"><input id="bluetooth" type="checkbox" checked><span>Sound through Bluetooth<small class="note">For hearing aids or headphones. Keeps the phone out of "call" mode so sound isn't pulled to the speaker. Turn off if it mishears you more. Works with "This phone" listening.</small></span></label>
+    <label class="setting"><input id="hideMine" type="checkbox"><span>Hide my line during a run<small class="note">You see "Your line" instead of the words. Say or tap Line to see them: the first few words, then the whole line.</small></span></label>
     <label class="setting"><input id="skipSongs" type="checkbox" checked><span>Dialogue only<small class="note">Skip the singing; lines spoken inside songs stay</small></span></label>
     <label for="before">Read before each of your lines</label>
     <select id="before"><option value="1">1 line</option><option value="2">2 lines</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="0">everything</option></select>
@@ -277,6 +296,8 @@
   <details id="voicesBox">
     <summary>Recorded voices and phone habits</summary>
     <p id="voicesCount" class="note"></p>
+    <p>Record people reading the other parts, one line at a time; their voices then play in your runs.</p>
+    <button type="button" data-mode="record" aria-pressed="false" class="rec-mode">Record voices</button>
     <p>Recordings stay on this phone. <b>Back up</b> after a recording session: it opens the Share menu so you can send the file to yourself (Gmail or Drive). <b>Restore</b> loads a backup file back in.</p>
     <div class="controls">
       <button id="backup">Back up recordings</button>
@@ -297,20 +318,10 @@
   <details>
     <summary>How it works</summary>
     <p><b>Made-up words</b> (the film's invented curse words) are checked by how they sound, since the phone can't spell them; they're underlined on screen when it's your line.</p>
-    <p>With <b>Dialogue only</b> on, the phone skips every sung line; lines spoken inside a song (like the dinner in "What a Mother Does") stay in. <b>Lines only</b> lists just your spoken lines, each after the last sentence of the line before it, with no singing and no stage directions beyond a short note. With it off: you practice the first two sung lines after each lead-in; the rest of the song is skipped, and the last sung line before your next spoken line is read as your cue. After a scene, open "Scene around this line": <span class="ok">&#10003; Matched</span> lines were right, <span class="check">? Check</span> lines were probably the phone mishearing you, <span class="bad">&times; Needs work</span> lines need work.</p>
-  </details>
-
-  <details>
-    <summary>Voice test checklist</summary>
-    <ol>
-      <li>Tap <b>Start</b> and allow the microphone. The phone reads Mother's line; say yours when it goes quiet.</li>
-      <li>On one of your lines, say <b>"line"</b> instead. It gives the first few words. Say "line" again for the whole line.</li>
-      <li>On the line marked <i>(pause)</i>, stop for about three seconds in the middle. Does it wait, or jump ahead? If it jumps, raise the "wait before moving on" setting.</li>
-      <li>Say <b>"pause"</b> on its own; then say <b>"resume"</b>. Say <b>"repeat"</b> to hear the last cue again.</li>
-      <li>Two of your lines contain the word "pause" in a sentence. It should <i>not</i> pause there.</li>
-      <li>Run a whole scene once more where you usually rehearse.</li>
-      <li>Tap <b>Copy report</b> and paste it to Reginald, with a sentence on how it felt.</li>
-    </ol>
+    <p><b>A run:</b> the phone reads the other parts (recorded voices where there are some) and listens for yours. Say <b>"line"</b> for a prompt, "pause", "resume" or "repeat" any time, or use the buttons. When it skips two or more lines it says <b>"Skipping ahead"</b> and what you missed.</p>
+    <p><b>Results:</b> after a run, "Scene around this line" shows every line: <span class="ok">&#10003; Matched</span> was right, <span class="check">? Check</span> was probably the phone mishearing you, <span class="bad">&times; Needs work</span> needs work. Tap <b>I said it right</b> when the phone got it wrong. Results stay until your next run.</p>
+    <p><b>In or out:</b> tap any line in "Scene around this line" to put it in or out of your next run. Your choices are kept on this phone. Your lines with only stage directions between them are said as one.</p>
+    <p><b>Dialogue only</b> skips the singing; lines spoken inside songs stay in. With it off, you practice the first two sung lines after each lead-in. <b>Lines only</b> lists just your spoken lines, each after the end of the line before it, for drilling the words.</p>
   </details>
 
   <details>
@@ -318,6 +329,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025a"></script>
+<script type="module" src="app.js?v=20261025d"></script>
 </body>
 </html>
