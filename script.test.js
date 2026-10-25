@@ -74,3 +74,7 @@ test('a [SKIPPED: ...] line is a summary of what a run may skip there', () => {
   const s = parseScript('# S\nTHE OLD MAN: Hi.\n[SKIPPED: Mother sings.]\nMOTHER: ~ LA\n');
   assert.deepEqual(s.scenes[0].items[1], { kind: 'summary', text: 'Mother sings.' });
 });
+
+test('an unknown bracketed line asks for a refresh rather than a bare "cannot read"', () => {
+  assert.throws(() => parseScript('# S\n[SOMETHING NEW: x]\n'), /Refresh the page/);
+});

@@ -1,5 +1,5 @@
 // Reads the plain-text script format (see README) into scenes of items.
-import { normalize } from './core.js?v=20261024i';
+import { normalize } from './core.js?v=20261024j';
 
 // Small stable hash (FNV-1a) so a line's id depends only on its own scene, speaker and words.
 function hash(s) {
@@ -37,6 +37,9 @@ export function parseScript(text) {
       scene.items.push({ kind: 'line', id: hash(`${key}|${count}`), who, text: body, sung });
       return;
     }
+    // A bracketed line this version doesn't know is most likely newer script format: say so plainly
+    // (24 Oct 2026: the skip summaries failed on a phone still running the page from before them).
+    if (/^\[[A-Z ]+:?.*\]$/i.test(line)) throw new Error(`line ${n} uses something this version of Line Runner doesn't know yet. Refresh the page, then load the script again`);
     throw new Error(`line ${n}: cannot read "${line}"`);
   });
   return out;
