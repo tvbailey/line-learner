@@ -104,6 +104,8 @@
   .ln.skipped .pick { border-style: dashed; color: var(--muted); }
   /* A line out of the next run shows its "Recorded" mark in gray, not green (Thomas, 25 Oct 2026). */
   .ln.skipped .rec-mark { color: var(--muted); }
+  /* ...and its results from the last run in gray too (Thomas, 25 Oct 2026). */
+  .ln.skipped .result, .ln.skipped .heard { color: var(--muted); }
   .pick-hint { margin: 0 0 8px; }
   .tally { font-weight: 700; margin-top: 8px; }
   /* Between runs: the results list runs full length with the page, and the turn band and stage are
@@ -332,6 +334,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025g"></script>
+<script type="module" src="app.js?v=20261025h"></script>
 </body>
 </html>
