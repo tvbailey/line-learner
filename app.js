@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024e';
-import { parseScript } from './script.js?v=20261024e';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024e';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024e';
-import * as voices from './voices.js?v=20261024e';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024f';
+import { parseScript } from './script.js?v=20261024f';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines } from './plan.js?v=20261024f';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024f';
+import * as voices from './voices.js?v=20261024f';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -643,6 +643,7 @@ function stopRun() {
 function showRunNext(show) {
   const last = !script || Number($('scene').value) >= script.scenes.length - 1;
   $('runNext').hidden = !show || last;
+  $('runNext2').hidden = !show || last; // a second one just above Copy report
 }
 
 // Reads someone else's line: their recorded voice if there is one for this exact line, otherwise
@@ -1153,7 +1154,7 @@ async function setup() {
   if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
   $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; store.set('ll-gap', $('gap').value); };
   $('start').onclick = () => (running ? stopRun() : runScene());
-  $('runNext').onclick = () => {
+  $('runNext').onclick = $('runNext2').onclick = () => {
     const n = Number($('scene').value) + 1;
     if (!script.scenes[n] || running) return;
     $('scene').value = n;

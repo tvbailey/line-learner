@@ -149,6 +149,7 @@
   .lines-view .duo { margin-top: 10px; }
   .lines-view .duo button[aria-pressed]::before { content: none; }
   .scene-pick { padding: 4px 0 8px; }
+  body.lines-mode .scene-pick { display: none; }
   .lines-list { margin-top: 14px; }
   .lines-next { width: 100%; min-height: 64px; margin-top: 18px; font-size: 1.15rem; }
   .lo-mine { font-size: 1.3rem; line-height: 1.4; font-weight: 650; padding: 8px 12px; margin: 2px 0 6px;
@@ -174,27 +175,21 @@
     <span class="scene-name" id="sceneName"></span>
     <button id="theme" type="button" aria-label="Switch to light theme">Light</button>
   </div>
-  <!-- The scene list sits at the top so it needs no scrolling (Thomas, 24 Oct 2026). -->
-  <div class="scene-pick">
-    <label for="scene" class="sr-only">Scene</label>
-    <select id="scene" aria-label="Scene"></select>
-  </div>
-
   <div id="turn" class="turn idle" role="status" aria-live="polite">
     <h1 id="turnTitle">READY</h1>
     <p><svg id="turnIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"></svg><span id="status">Tap Start</span></p>
   </div>
   <div class="stage">
     <p class="eyebrow" id="speaker">&nbsp;</p>
-    <p class="line" id="currentLine">Pick a scene above, then tap Start.</p>
+    <p class="line" id="currentLine">Pick a scene below, then tap Start.</p>
     <p class="note" id="lineNote"></p>
     <p id="lastResult" class="badge"></p>
   </div>
 
   <!-- Lines only: his spoken lines in order, each after a short cue (Thomas, 10 Oct 2026). -->
   <section id="linesView" class="lines-view" hidden>
-    <!-- Kept for the code that syncs it; the scene list at the top does the job now. -->
-    <select id="linesScene" hidden aria-hidden="true" tabindex="-1"></select>
+    <label for="linesScene">Scene</label>
+    <select id="linesScene"></select>
     <div class="duo">
       <button type="button" id="cover" aria-pressed="false">Cover my lines</button>
       <button type="button" id="linesRun">Run this scene</button>
@@ -210,6 +205,11 @@
     <button id="repeat">Repeat cue</button>
     <button id="lineBtn">Line</button>
     <button id="runNext" class="wide" hidden>Next scene</button>
+  </div>
+  <!-- The scene list, just under the run buttons (Thomas, 24 Oct 2026). -->
+  <div class="scene-pick">
+    <label for="scene" class="sr-only">Scene</label>
+    <select id="scene" aria-label="Scene"></select>
   </div>
   <!-- Record mode: a bar fixed to the bottom of the screen with the line and the buttons, so
        nothing needs scrolling (Thomas, 7 Oct 2026: scrolling between the top and the script). -->
@@ -241,7 +241,7 @@
     <summary>Scene around this line</summary>
     <div id="script" class="script"></div>
   </details>
-  <div class="actions"><button id="copy">Copy report</button></div>
+  <div class="actions"><button id="runNext2" hidden>Next scene</button><button id="copy">Copy report</button></div>
 
   <div class="role"><span class="eyebrow">Your part</span><b id="role">&nbsp;</b></div>
   <label id="modeLabel">Practice mode</label>
@@ -318,6 +318,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261024e"></script>
+<script type="module" src="app.js?v=20261024f"></script>
 </body>
 </html>
