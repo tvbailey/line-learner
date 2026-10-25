@@ -290,10 +290,6 @@
     <label class="setting"><input id="hideMine" type="checkbox"><span>Hide my line during a run<small class="note">You see "Your line" instead of the words. Say or tap Line to see them: the first few words, then the whole line.</small></span></label>
     <label class="setting"><input id="readBack" type="checkbox" checked><span>Read my line after my turn<small class="note">The phone's voice says your line as written, right after you say it. It never says whether you got it right. Turn it off when you know your lines.</small></span></label>
     <label class="setting"><input id="checkLines" type="checkbox"><span>Check my lines<small class="note">Marks each line Matched, Check or Needs work after a run. The phone often mishears fast or big delivery, so it starts off.</small></span></label>
-    <div id="habitsWrap" class="habits-wrap" hidden>
-      <p class="note"><b>Phone habits:</b> words the phone hears wrong when you say a line right, taught with "I said it right." Each counts only in its own line and spot, and only with the listener it was learned on.</p>
-      <ul id="habitList" class="habit-list"></ul>
-    </div>
     <label for="before">Read before each of your lines</label>
     <select id="before"><option value="1">1 line</option><option value="2">2 lines</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="0">everything</option></select>
     <label for="gap">Wait before moving on: <span id="gapVal">1.5</span> seconds</label>
@@ -313,6 +309,11 @@
     <label for="voice">The phone's voice</label>
     <p class="note">Reads your line back, the "Skipping ahead" notes, and any cue with no recorded voice when the box above is off.</p>
     <select id="voice"></select>
+    <!-- Always shown: habits are learned in Record mode too, whether or not lines are checked (Fable's review). -->
+    <div id="habitsWrap" class="habits-wrap">
+      <p class="note"><b>Phone habits:</b> words the phone hears wrong when you say a line right, taught with "I said it right" or in Record mode. Each counts only in its own line and spot, and only with the listener it was learned on.</p>
+      <ul id="habitList" class="habit-list"></ul>
+    </div>
     <label id="localWrap" class="setting" hidden><input id="local" type="checkbox"><span>Try on-phone listening<small class="note">Experimental; keeps audio off Google's servers if it works</small></span></label>
   </details>
 
@@ -350,6 +351,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025l"></script>
+<script type="module" src="app.js?v=20261025m"></script>
 </body>
 </html>

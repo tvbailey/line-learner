@@ -252,3 +252,11 @@ test('pickLines: a song announcement tapped out is not said; tapped back in afte
   assert.deepEqual(show(pickLines(steps, new Map(), 'THE OLD MAN', 1)), ['skip:one', 'skip:Tune', 'speak:two', 'listen:Mine.', 'show:songEnd']);
   assert.deepEqual(show(pickLines(steps, new Map([[song, 'in']]), 'THE OLD MAN', 1)), ['skip:one', 'speak:Tune', 'speak:two', 'listen:Mine.', 'show:songEnd']);
 });
+
+test('recordSteps follows his picks: a sung line tapped in can be recorded (Fable\'s review, 25 Oct 2026)', () => {
+  const items = parseScript('# S\n[SONG: Tune]\nMOTHER: ~LA LA\nB: two\nTHE OLD MAN: Mine.\n[END SONG]\n').scenes[0].items;
+  const ids = (picks) => recordSteps(items, 'THE OLD MAN', { skipSongs: true, keep: 0, picks }).map((r) => r.item.text);
+  assert.deepEqual(ids(new Map()), ['two', 'Mine.']);
+  assert.deepEqual(ids(new Map([[items[1].id, 'in']])), ['LA LA', 'two', 'Mine.']);
+  assert.deepEqual(ids(new Map([[items[2].id, 'out']])), ['Mine.']);
+});

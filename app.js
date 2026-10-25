@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025l';
-import { parseScript } from './script.js?v=20261025l';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025l';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025l';
-import * as voices from './voices.js?v=20261025l';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025m';
+import { parseScript } from './script.js?v=20261025m';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025m';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025m';
+import * as voices from './voices.js?v=20261025m';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -200,7 +200,7 @@ function renderScript() {
   if (lines) renderLines(scene);
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
-  if (recording) steps = recordSteps(scene.items, me, { skipSongs: true, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
+  if (recording) steps = recordSteps(scene.items, me, { skipSongs: true, keep: Number($('before').value), picks: picks() }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
   // The singing always starts out; "Dialogue only" went once any line or song could be tapped in or out (Thomas, 25 Oct 2026).
   else steps = addSkipNotes(joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: true }), picks(), me, Number($('before').value)), me));
   $('sceneName').textContent = scene.title;
@@ -774,7 +774,8 @@ async function readBack(item) {
     await sayOther(stripDirections(p.text), '', sceneClips.has(p.id) ? p : null, true);
   }
 }
-const sceneItem = (id) => script.scenes[Number($('scene').value) || 0].items.find((x) => x.id === id);
+// Any scene: ids carry their scene, and the scene list can be changed mid-run (Fable's review).
+const sceneItem = (id) => { for (const sc of script.scenes) { const it = sc.items.find((x) => x.id === id); if (it) return it; } return null; };
 
 // Listen mode's turn for his line: the mic stays off, and he gets about the time it takes to say it
 // in his head before the phone reads it. Pause holds the clock; Line ends the wait; Repeat says the
@@ -813,10 +814,12 @@ async function loadSceneClips() {
         const it = sceneItem(id);
         if (!it) continue;
         mine++;
-        try { const c = await voices.getClip(id); if (voices.clipFits(c, it, prevLineText(it))) { sceneClips.set(id, c); mineVoiced++; } } catch (_) { /* no storage */ }
+        // Only the AI read-back clips, never his own Record-mode takes (Fable's review, 25 Oct 2026).
+        try { const c = await voices.getClip(id); if (c && c.source === 'ai' && voices.clipFits(c, it, prevLineText(it))) { sceneClips.set(id, c); mineVoiced++; } } catch (_) { /* no storage */ }
       }
       continue;
     }
+    if (st.action !== 'speak' && st.action !== 'cue') continue; // skipped lines aren't cues (Fable's review)
     cues++;
     try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item, prevLineText(st.item))) sceneClips.set(st.item.id, c); } catch (_) { /* no storage */ }
   }
@@ -1043,6 +1046,12 @@ async function runRecord() {
         if (verdict === 'skip') { i++; continue; }
         if (verdict === 'back') { i = Math.max(0, i - 1); continue; }
         if (verdict === 'stop') break;
+      }
+      // His own line with an AI read-back clip keeps the clip; his take has taught the phone already
+      // (Fable's review, 25 Oct 2026: one tap of Next would have replaced it with his own voice).
+      if (st.action === 'listen' && ((await voices.getClip(st.item.id).catch(() => null)) || {}).source === 'ai') {
+        log(`record: line ${i + 1} keeps its AI read-back voice; the take only taught the phone`);
+        have[i] = true; i++; continue;
       }
       try { await voices.putClip(clip); }
       catch (err) { setStatus(`Could not save that take (${err.message}). Read it again.`, '', 'problem'); log(`record: save failed: ${err.message}`); await sleep(2000); continue; }
@@ -1328,9 +1337,7 @@ async function setup() {
   $('readBack').checked = store.get('ll-read-back') !== 'off';
   $('readBack').onchange = () => store.set('ll-read-back', $('readBack').checked ? 'on' : 'off');
   $('checkLines').checked = store.get('ll-check-lines') === 'on';
-  // Phone habits only matter when lines are checked, so their list shows only then.
-  $('checkLines').onchange = () => { store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off'); $('habitsWrap').hidden = !$('checkLines').checked; };
-  $('habitsWrap').hidden = !$('checkLines').checked;
+  $('checkLines').onchange = () => store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off');
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
   $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };

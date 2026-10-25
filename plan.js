@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261025l';
+import { stripDirections, cleanText } from './core.js?v=20261025m';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -46,10 +46,11 @@ export function planScene(items, me, { skipSongs = false } = {}) {
 
 // Record mode: the lines worth recording at these settings, in order and once each. That's every
 // line a run would read aloud (including a skipped sung line read as a cue), plus his own lines.
-export function recordSteps(items, me, { skipSongs = false, keep = 0 } = {}) {
+// It follows his picks, so a sung line he tapped in can get a recorded voice (Fable's review, 25 Oct 2026).
+export function recordSteps(items, me, { skipSongs = false, keep = 0, picks = new Map() } = {}) {
   const out = [];
   const seen = new Set();
-  for (const st of trimCues(planScene(items, me, { skipSongs }), keep)) {
+  for (const st of pickLines(planScene(items, me, { skipSongs }), picks, me, keep)) {
     if (st.item.kind !== 'line' || seen.has(st.item.id)) continue;
     if (st.action !== 'speak' && st.action !== 'cue' && st.action !== 'listen') continue;
     seen.add(st.item.id);
