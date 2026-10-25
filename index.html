@@ -282,55 +282,61 @@
   </div>
   <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="listen">Listen</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
 
+  <!-- The folded sections, cut from six to four plus the log, each with one job (Thomas, 25 Oct 2026,
+       after Fable's and Gemini 3.8 Flash's reviews). -->
   <details id="settings">
-    <summary>Rehearsal settings</summary>
-    <label for="engine">Listen with</label>
-    <select id="engine">
-      <option value="google">Google (the phone's speech service)</option>
-      <option value="moon-tiny">This phone: Moonshine Tiny (49 MB download)</option>
-      <option value="moon-small">This phone: Moonshine Small (bigger, more accurate)</option>
-    </select>
-    <p id="engineNote" class="note">Moonshine keeps the mic on (no dings) and nothing leaves the phone. It downloads once.</p>
-    <label class="setting"><input id="bluetooth" type="checkbox" checked><span>Sound through Bluetooth<small class="note">For hearing aids or headphones. Keeps the phone out of "call" mode so sound isn't pulled to the speaker. Turn off if it mishears you more. Works with "This phone" listening.</small></span></label>
+    <summary>Settings</summary>
+    <h3>During a run</h3>
     <label class="setting"><input id="hideMine" type="checkbox"><span>Hide my line during a run<small class="note">You see "Your line" instead of the words. Say or tap Line to see them: the first few words, then the whole line.</small></span></label>
     <label class="setting"><input id="readBack" type="checkbox" checked><span>Read my line after my turn<small class="note">The phone's voice says your line as written, right after you say it. It never says whether you got it right. Turn it off when you know your lines.</small></span></label>
     <label class="setting"><input id="checkLines" type="checkbox"><span>Check my lines<small class="note">Marks each line Matched, Check or Needs work after a run. The phone often mishears fast or big delivery, so it starts off.</small></span></label>
+    <div id="habitsWrap" class="habits-wrap" hidden>
+      <p class="note"><b>Phone habits:</b> words the phone hears wrong when you say a line right, taught with "I said it right." Each counts only in its own line and spot, and only with the listener it was learned on.</p>
+      <ul id="habitList" class="habit-list"></ul>
+    </div>
     <label class="setting"><input id="skipSongs" type="checkbox" checked><span>Dialogue only<small class="note">Skip the singing; lines spoken inside songs stay</small></span></label>
     <label for="before">Read before each of your lines</label>
     <select id="before"><option value="1">1 line</option><option value="2">2 lines</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="0">everything</option></select>
     <label for="gap">Wait before moving on: <span id="gapVal">1.5</span> seconds</label>
     <p class="note">How long a silence ends your line.</p>
     <input id="gap" type="range" min="0.8" max="4" step="0.1" value="1.5">
-    <label class="setting"><input id="perCharacter" type="checkbox" checked><span>A different voice for each character</span></label>
-    <label for="voice">Voice for the other parts (when the box above is off)</label>
+    <h3>Listening and voices</h3>
+    <label for="engine">Listen with</label>
+    <!-- Google is off the list (it dings, sends his voice off the phone and pulls sound off
+         Bluetooth), but the app still falls back to it if the phone's listener fails mid-scene. -->
+    <select id="engine">
+      <option value="moon-small">Moonshine Small (more accurate)</option>
+      <option value="moon-tiny">Moonshine Tiny (smaller download)</option>
+    </select>
+    <p id="engineNote" class="note">Moonshine keeps the mic on (no dings) and nothing leaves the phone. It downloads once.</p>
+    <label class="setting"><input id="bluetooth" type="checkbox" checked><span>Sound through Bluetooth<small class="note">For hearing aids or headphones. Keeps the phone out of "call" mode so sound isn't pulled to the speaker. Turn off if it mishears you more.</small></span></label>
+    <label class="setting"><input id="perCharacter" type="checkbox" checked><span>A different voice for each character<small class="note">For cues with no recorded voice</small></span></label>
+    <label for="voice">The phone's voice</label>
+    <p class="note">Reads your line back, the "Skipping ahead" notes, and any cue with no recorded voice when the box above is off.</p>
     <select id="voice"></select>
     <label id="localWrap" class="setting" hidden><input id="local" type="checkbox"><span>Try on-phone listening<small class="note">Experimental; keeps audio off Google's servers if it works</small></span></label>
   </details>
 
   <details id="voicesBox">
-    <summary>Recorded voices and phone habits</summary>
+    <summary>Script and voices</summary>
+    <h3>Script</h3>
+    <label for="file">Load a script</label>
+    <p class="note">Open the script file Reginald sent you (it ends in <b>.txt</b>). It stays on this phone.</p>
+    <input id="file" type="file" accept=".txt,text/plain">
+    <h3>Recorded voices</h3>
     <p id="voicesCount" class="note"></p>
     <p>Record people reading the other parts, one line at a time; their voices then play in your runs.</p>
     <button type="button" data-mode="record" aria-pressed="false" class="rec-mode">Record voices</button>
-    <p>Recordings stay on this phone. <b>Back up</b> after a recording session: it opens the Share menu so you can send the file to yourself (Gmail or Drive). <b>Restore</b> loads a backup file back in.</p>
+    <p>Recordings stay on this phone. <b>Back up</b> after a recording session: it opens the Share menu so you can send the file to yourself (Gmail or Drive). <b>Restore</b> loads a recordings backup file back in (not a script).</p>
     <div class="controls">
       <button id="backup">Back up recordings</button>
-      <label class="button-like" for="restoreFile">Restore</label>
+      <label class="button-like" for="restoreFile">Restore recordings</label>
     </div>
     <input id="restoreFile" type="file" accept=".txt,.json,text/plain,application/json" hidden>
-    <h3>Phone habits</h3>
-    <p class="note">Words the phone hears wrong when you say a line right. Each counts only in its own line and spot, and only with the listener it was learned on.</p>
-    <ul id="habitList" class="habit-list"></ul>
   </details>
 
   <details>
-    <summary>Load a script</summary>
-    <p>Open the script file Reginald sent you (it ends in <b>.txt</b>). It stays on this phone.</p>
-    <input id="file" type="file" accept=".txt,text/plain">
-  </details>
-
-  <details>
-    <summary>How it works</summary>
+    <summary>Help</summary>
     <p><b>Made-up words</b> (the film's invented curse words) are checked by how they sound, since the phone can't spell them; they're underlined on screen when it's your line.</p>
     <p><b>A run:</b> the phone reads the other parts (recorded voices where there are some) and listens for yours. Say <b>"line"</b> for a prompt, "pause", "resume" or "repeat" any time, or use the buttons. When it skips two or more lines it says <b>"Skipping ahead"</b> and what you missed.</p>
     <p><b>Listen:</b> the mic stays off. The cues play, then a pause for your line, about as long as it takes to say it in your head, then the phone's voice reads it. For the car, or anywhere you can't talk out loud. Tap Line to hear it sooner.</p>
@@ -341,10 +347,10 @@
   </details>
 
   <details>
-    <summary>Event log</summary>
+    <summary>Details for Reginald</summary>
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025j"></script>
+<script type="module" src="app.js?v=20261025k"></script>
 </body>
 </html>

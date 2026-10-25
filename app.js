@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025j';
-import { parseScript } from './script.js?v=20261025j';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025j';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025j';
-import * as voices from './voices.js?v=20261025j';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025k';
+import { parseScript } from './script.js?v=20261025k';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025k';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025k';
+import * as voices from './voices.js?v=20261025k';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -1032,11 +1032,11 @@ async function runRecord() {
   }
   const done = have.filter(Boolean).length;
   log(`record end: ${done} of ${list.length} lines recorded`);
-  setStatus(`Recorded ${done} of ${list.length} lines.${done ? ' Back up in "Recorded voices" below.' : ''}`, '', 'done');
+  setStatus(`Recorded ${done} of ${list.length} lines.${done ? ' Back up in "Script and voices" below.' : ''}`, '', 'done');
   refreshVoicesBox();
 }
 
-// ---------- recorded voices and phone habits, in settings ----------
+// ---------- recorded voices (Script and voices) and phone habits (Settings) ----------
 async function refreshVoicesBox() {
   let clips = [], habits = [];
   try { clips = await voices.allClips(); habits = await voices.allHabits(); } catch (err) { $('voicesCount').textContent = `Storage unavailable: ${err.message}`; return; }
@@ -1222,7 +1222,7 @@ async function copyReport() {
     '', ...logLines,
   ].join('\n');
   try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.', '', 'done'); }
-  catch (_) { setStatus('Copy failed; open the Event log and copy it by hand.', '', 'problem'); }
+  catch (_) { setStatus('Copy failed; open "Details for Reginald" at the bottom and copy it by hand.', '', 'problem'); }
 }
 
 // Settings that only matter when Google listens stay out of sight otherwise (25 Oct 2026).
@@ -1296,7 +1296,9 @@ async function setup() {
   $('readBack').checked = store.get('ll-read-back') !== 'off';
   $('readBack').onchange = () => store.set('ll-read-back', $('readBack').checked ? 'on' : 'off');
   $('checkLines').checked = store.get('ll-check-lines') === 'on';
-  $('checkLines').onchange = () => store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off');
+  // Phone habits only matter when lines are checked, so their list shows only then.
+  $('checkLines').onchange = () => { store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off'); $('habitsWrap').hidden = !$('checkLines').checked; };
+  $('habitsWrap').hidden = !$('checkLines').checked;
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
