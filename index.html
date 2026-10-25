@@ -148,6 +148,8 @@
   .habit-list button { min-height: 48px; margin-left: 8px; padding: 6px 12px; }
   .ln .mark-right { display: block; margin-top: 8px; }
   .duo button { min-height: 64px; }
+  .duo.trio { grid-template-columns: 1fr 1fr 1fr; }
+  .duo.trio button { padding-left: 6px; padding-right: 6px; }
   [data-mode][aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); padding: 9px 13px; }
   [data-mode][aria-pressed="true"]::before { content: "\2713\00a0"; font-weight: 900; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -269,11 +271,12 @@
 
   <div class="role"><span class="eyebrow">Your part</span><b id="role">&nbsp;</b></div>
   <label id="modeLabel">Practice mode</label>
-  <div class="duo" role="group" aria-labelledby="modeLabel">
+  <div class="duo trio" role="group" aria-labelledby="modeLabel">
     <button type="button" data-mode="run" aria-pressed="true">Run the scene</button>
+    <button type="button" data-mode="listen" aria-pressed="false">Listen</button>
     <button type="button" data-mode="lines" aria-pressed="false">Lines only</button>
   </div>
-  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
+  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="listen">Listen</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
 
   <details id="settings">
     <summary>Rehearsal settings</summary>
@@ -286,6 +289,8 @@
     <p id="engineNote" class="note">Moonshine keeps the mic on (no dings) and nothing leaves the phone. It downloads once.</p>
     <label class="setting"><input id="bluetooth" type="checkbox" checked><span>Sound through Bluetooth<small class="note">For hearing aids or headphones. Keeps the phone out of "call" mode so sound isn't pulled to the speaker. Turn off if it mishears you more. Works with "This phone" listening.</small></span></label>
     <label class="setting"><input id="hideMine" type="checkbox"><span>Hide my line during a run<small class="note">You see "Your line" instead of the words. Say or tap Line to see them: the first few words, then the whole line.</small></span></label>
+    <label class="setting"><input id="readBack" type="checkbox" checked><span>Read my line after my turn<small class="note">The phone's voice says your line as written, right after you say it. It never says whether you got it right. Turn it off when you know your lines.</small></span></label>
+    <label class="setting"><input id="checkLines" type="checkbox"><span>Check my lines<small class="note">Marks each line Matched, Check or Needs work after a run. The phone often mishears fast or big delivery, so it starts off.</small></span></label>
     <label class="setting"><input id="skipSongs" type="checkbox" checked><span>Dialogue only<small class="note">Skip the singing; lines spoken inside songs stay</small></span></label>
     <label for="before">Read before each of your lines</label>
     <select id="before"><option value="1">1 line</option><option value="2">2 lines</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="0">everything</option></select>
@@ -324,7 +329,9 @@
     <summary>How it works</summary>
     <p><b>Made-up words</b> (the film's invented curse words) are checked by how they sound, since the phone can't spell them; they're underlined on screen when it's your line.</p>
     <p><b>A run:</b> the phone reads the other parts (recorded voices where there are some) and listens for yours. Say <b>"line"</b> for a prompt, "pause", "resume" or "repeat" any time, or use the buttons. When it skips two or more lines it says <b>"Skipping ahead"</b> and what you missed.</p>
-    <p><b>Results:</b> after a run, "Scene around this line" shows every line: <span class="ok">&#10003; Matched</span> was right, <span class="check">? Check</span> was probably the phone mishearing you, <span class="bad">&times; Needs work</span> needs work. Tap <b>I said it right</b> when the phone got it wrong. Results stay until your next run.</p>
+    <p><b>Listen:</b> the mic stays off. The cues play, then a pause for your line, about as long as it takes to say it in your head, then the phone's voice reads it. For the car, or anywhere you can't talk out loud. Tap Line to hear it sooner.</p>
+    <p><b>Read my line after my turn</b> (in Settings): in a run, the phone's voice says your line as written right after you say it, like a friend holding the script.</p>
+    <p><b>Results</b> (with <b>Check my lines</b> on in Settings): after a run, "Scene around this line" shows every line: <span class="ok">&#10003; Matched</span> was right, <span class="check">? Check</span> was probably the phone mishearing you, <span class="bad">&times; Needs work</span> needs work. Tap <b>I said it right</b> when the phone got it wrong. Results stay until your next run.</p>
     <p><b>In or out:</b> tap any line in "Scene around this line" to put it in or out of your next run. Your choices are kept on this phone. Your lines with only stage directions between them are said as one.</p>
     <p><b>Dialogue only</b> skips the singing; lines spoken inside songs stay in. With it off, you practice the first two sung lines after each lead-in. <b>Lines only</b> lists just your spoken lines, each after the end of the line before it, for drilling the words.</p>
   </details>
@@ -334,6 +341,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025h"></script>
+<script type="module" src="app.js?v=20261025i"></script>
 </body>
 </html>

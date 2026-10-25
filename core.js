@@ -329,3 +329,10 @@ export function voiceFor(name, voiceCount) {
   if (name === 'JEAN') return { voice, pitch: 0.7, rate: 0.93, kind: 'man' };
   return { voice, pitch: 0.8, rate: 1, kind: 'man' };
 }
+
+// Listen mode's pause for his line (Thomas, 25 Oct 2026): time to say it in his head or under his
+// breath before the phone reads it, about the time it takes to say it, with a floor and a ceiling.
+export function thinkMs(text) {
+  const words = normalize(stripDirections(text)).length;
+  return Math.min(20000, Math.max(2500, 1500 + words * 450));
+}

@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025h';
-import { parseScript } from './script.js?v=20261025h';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025h';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025h';
-import * as voices from './voices.js?v=20261025h';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025i';
+import { parseScript } from './script.js?v=20261025i';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025i';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025i';
+import * as voices from './voices.js?v=20261025i';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -47,11 +47,12 @@ function log(msg) {
 }
 
 // The turn band: a big heading that always sits in the same place, saying whose turn it is.
-const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM', rec: 'RECORDING' };
+const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', written: 'AS WRITTEN', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM', rec: 'RECORDING' };
 const TURN_ICON = {
   rec: '<circle cx="12" cy="12" r="6" fill="currentColor"/>',
   idle: '<circle cx="12" cy="12" r="9"/>',
   cue: '<path d="M3 9v6h4l5 4V5L7 9H3zM16 8q5 4 0 8"/>',
+  written: '<path d="M6 3h9l4 4v14H6zM9 11h7M9 15h7"/>',
   you: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
   paused: '<path d="M8 5v14M16 5v14"/>',
   done: '<path d="M4 12l5 5L20 7"/>',
@@ -78,7 +79,7 @@ function showOnStage(st, next) {
     const mine = st.action === 'listen';
     $('speaker').textContent = it.who + (it.sung ? ' (sung)' : '') + (mine ? ' / you' : '');
     // "Hide my line during a run" (Thomas, 25 Oct 2026): recall it; Line shows it a piece at a time.
-    if (mine && $('mode').value === 'run' && $('hideMine').checked) {
+    if (mine && $('mode').value !== 'record' && $('hideMine').checked) {
       const s = document.createElement('span');
       s.className = 'hidden-line';
       s.textContent = 'Your line. Say or tap "Line" to see it.';
@@ -710,14 +711,15 @@ function showRunNext(show) {
 // the phone's voice. Listening is off until it has finished playing.
 // Pause during a cue stops the voice at once; Resume says that line again from the top.
 let inCue = false;
-async function sayOther(text, who = '', item = null) {
+async function sayOther(text, who = '', item = null, written = false) {
   stopListening();
   inCue = true;
   try {
     for (;;) {
       while (paused && running && !stopRequested) await new Promise((r) => setTimeout(r, 150));
       if (!running || stopRequested) return;
-      setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
+      if (written) setStatus('Your line as written', '', 'written');
+      else setStatus(who ? `${who} is speaking` : 'Reading the cue...', '', 'cue');
       const clip = item && sceneClips.get(item.id);
       let played = false;
       if (clip) {
@@ -741,6 +743,38 @@ function pauseTapped() {
     return;
   }
   tapCommand = paused ? 'resume' : 'pause';
+}
+
+// After his turn, the phone's plain voice reads his line as written, never saying whether he got it
+// right (Thomas, 25 Oct 2026: a recorded voice reading his lines would teach him its delivery).
+async function readBack(item) {
+  if ($('hideMine').checked) $('currentLine').textContent = cleanText(item.text);
+  log('  read back as written');
+  await sayOther(stripDirections(item.text), me, null, true);
+}
+
+// Listen mode's turn for his line: the mic stays off, and he gets about the time it takes to say it
+// in his head before the phone reads it. Pause holds the clock; Line ends the wait; Repeat says the
+// cue again.
+async function listenWait(ms) {
+  setStatus('Your line. Say it to yourself.', 'listening');
+  let left = ms;
+  while (left > 0 && running && !stopRequested) {
+    const cmd = tapCommand; tapCommand = null;
+    if (cmd === 'pause' || cmd === 'resume') {
+      setPaused(cmd === 'pause');
+      log(paused ? 'paused' : 'resumed');
+      setStatus(paused ? 'Paused. Tap Resume.' : 'Your line. Say it to yourself.', paused ? 'paused' : 'listening');
+    } else if (cmd === 'line') return;
+    else if (cmd === 'repeat' && lastCueItem) {
+      log('repeating the cue');
+      await sayOther(lastCueItem.text, lastCueItem.who, lastCueItem);
+      setStatus('Your line. Say it to yourself.', 'listening');
+      left = ms;
+    }
+    await new Promise((r) => setTimeout(r, 150));
+    if (!paused) left -= 150;
+  }
 }
 
 async function loadSceneClips() {
@@ -1068,9 +1102,14 @@ async function runScene() {
   renderScript();
   await keepAwake();
   voices.audio(); // wake the audio player on this tap, for recorded voices
+  // Listen mode keeps the mic off; with "Check my lines" off, nothing is marked right or wrong
+  // (Thomas, 25 Oct 2026: the phone mishears his delivery too often for the marks to help).
+  const listenOnly = $('mode').value === 'listen';
+  const checking = !listenOnly && $('checkLines').checked;
   let listenWith = 'Google';
   runEngine = 'google';
-  if (!SIM && engine() !== 'google') {
+  if (listenOnly) listenWith = 'nobody (Listen mode, mic off)';
+  else if (!SIM && engine() !== 'google') {
     setStatus('Getting the on-phone listener ready...', '', 'idle');
     const ok = await startMoonScene();
     listenWith = ok ? `Moonshine ${moon.size} on the phone` : 'Google (Moonshine unavailable)';
@@ -1093,6 +1132,13 @@ async function runScene() {
       continue;
     }
     const expected = stripDirections(item.text);
+    if (listenOnly) {
+      await listenWait(thinkMs(item.text));
+      if (stopRequested) break;
+      log(`line ${i}: listen`);
+      await readBack(item);
+      continue;
+    }
     const soundOnly = isSoundOnly(expected);
     const { heard, prompted, phoneRestarts } = await awaitMyLine(expected, soundOnly, !!item.joined);
     if (stopRequested) break;
@@ -1105,7 +1151,8 @@ async function runScene() {
     result.habitUsed = fixed.used;
     log(`line ${i}: ${result.match ? 'matched' : (result.likelyMishearing ? 'probably misheard' : 'differs')}${result.habitUsed ? `, phone habit allowed x${result.habitUsed}` : ''}${result.restarted ? ', restarted' : ''}${prompted ? ', prompted' : ''}${phoneRestarts ? `, phone stopped listening ${phoneRestarts}x mid-line` : ''} | heard: "${heard}"${result.match ? '' : ` | missing: ${result.missing.join(' ')} | extra: ${result.extra.join(' ')}`}`);
     if (result.madeUp && result.madeUp.length) log(`  made-up words: ${result.madeUp.map((m) => `${m.written} -> "${m.heard}" (${m.close ? 'close' : 'check'})`).join('; ')}`);
-    showHeard(i, heard, result, prompted, phoneRestarts, item, expected, lineEngine);
+    if (checking) showHeard(i, heard, result, prompted, phoneRestarts, item, expected, lineEngine);
+    if ($('readBack').checked && !stopRequested) await readBack(item);
   }
   } catch (err) { failed = err; log(`run stopped by an error: ${err.message}`); }
   try { stopListening(); } catch (_) { /* already stopped */ }
@@ -1132,6 +1179,7 @@ async function runScene() {
   }
   renderTally();
   log(`scene end; listening restarts: ${restarts}`);
+  if (!lastRun.rows.size) { setStatus('Scene done. Tap Start to run it again.', '', 'done'); return; }
   $('context').open = true;
   setStatus('Scene done. Results are below.', '', 'done');
 }
@@ -1161,7 +1209,7 @@ async function copyReport() {
     `when: ${new Date().toString()}`,
     `browser: ${navigator.userAgent}`,
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
-    `settings: wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}, hide my line ${$('hideMine').checked}`,
+    `settings: mode ${$('mode').value}, wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}, hide my line ${$('hideMine').checked}, read my line after ${$('readBack').checked}, check my lines ${$('checkLines').checked}`,
     `listening restarts: ${restarts}`,
     // His in/out choices (line ids only), so Reginald can see where runs skip.
     `read before: ${$('before').value}; dialogue only: ${$('skipSongs').checked}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
@@ -1190,7 +1238,7 @@ async function setup() {
   $('perCharacter').checked = store.get('ll-per-character') !== 'off';
   $('perCharacter').onchange = () => store.set('ll-per-character', $('perCharacter').checked ? 'on' : 'off');
   const savedMode = store.get('ll-mode');
-  $('mode').value = savedMode === 'record' || savedMode === 'lines' ? savedMode : 'run';
+  $('mode').value = ['record', 'lines', 'listen'].includes(savedMode) ? savedMode : 'run';
   // Two big buttons stand in for the mode list; the list itself keeps the value.
   const syncMode = () => document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === $('mode').value));
   // The mode can't change mid-scene: a switch to Lines only would hide the stage of a run still going.
@@ -1198,7 +1246,7 @@ async function setup() {
     if (running) { $('mode').value = store.get('ll-mode') || 'run'; syncMode(); return; }
     store.set('ll-mode', $('mode').value); syncMode(); renderScript();
   };
-  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); if (b.dataset.mode === 'record' && $('mode').value === 'record') { scrollTo(0, 0); setStatus('Record voices: tap Start, then read each line.', '', 'idle'); } }; });
+  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); if (b.dataset.mode === 'listen' && $('mode').value === 'listen') { scrollTo(0, 0); setStatus('Listen: tap Start. The mic stays off.', '', 'idle'); } if (b.dataset.mode === 'record' && $('mode').value === 'record') { scrollTo(0, 0); setStatus('Record voices: tap Start, then read each line.', '', 'idle'); } }; });
   syncMode();
   // Lines only has its own scene list at the top; it and the one below stay the same.
   $('linesScene').onchange = () => { $('scene').value = $('linesScene').value; $('scene').onchange(); };
@@ -1238,6 +1286,11 @@ async function setup() {
   };
   $('hideMine').checked = store.get('ll-hide-mine') === 'on';
   $('hideMine').onchange = () => store.set('ll-hide-mine', $('hideMine').checked ? 'on' : 'off');
+  // Read-back starts on and checking starts off (Thomas, 25 Oct 2026); either is his to switch.
+  $('readBack').checked = store.get('ll-read-back') !== 'off';
+  $('readBack').onchange = () => store.set('ll-read-back', $('readBack').checked ? 'on' : 'off');
+  $('checkLines').checked = store.get('ll-check-lines') === 'on';
+  $('checkLines').onchange = () => store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off');
   $('skipSongs').checked = store.get('ll-skip-songs') !== 'off';
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');

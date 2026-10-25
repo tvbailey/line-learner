@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, voiceFor } from './core.js';
+import { normalize, compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, voiceFor, thinkMs } from './core.js';
 
 test('normalize lowercases, strips punctuation, splits words', () => {
   assert.deepEqual(normalize("Fra-GEE-leh! It must be Italian."), ['fra', 'gee', 'leh', 'it', 'must', 'be', 'italian']);
@@ -291,4 +291,12 @@ test('compareLine: one word heard as two sound-alike words is a likely mishearin
 test('"St." heard for Saint and "breeches" for britches still match (Thomas\'s report, 22 Oct 2026)', () => {
   assert.equal(compareLine('Saint Peter, Saint Petersburg, Peter Rabbit, hey!', 'St. Peter, St. Petersburg, Peter Rabbit, hey!').match, true);
   assert.equal(compareLine('Far-fangled britches!', 'Far-fangled breeches!').match, true);
+});
+
+test('thinkMs: Listen mode gives a short line a few seconds and a long one more, within limits', () => {
+  assert.equal(thinkMs('Jeez.'), 2500);
+  assert.equal(thinkMs('What is it? What is it?'), 1500 + 6 * 450);
+  assert.ok(thinkMs('word '.repeat(30)) > thinkMs('word '.repeat(10)));
+  assert.equal(thinkMs('word '.repeat(200)), 20000);
+  assert.equal(thinkMs('Bills ... (looking up) bills!'), 2500); // directions and dots are not words
 });
