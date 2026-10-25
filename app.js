@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025i';
-import { parseScript } from './script.js?v=20261025i';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025i';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025i';
-import * as voices from './voices.js?v=20261025i';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025j';
+import { parseScript } from './script.js?v=20261025j';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025j';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025j';
+import * as voices from './voices.js?v=20261025j';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -47,12 +47,13 @@ function log(msg) {
 }
 
 // The turn band: a big heading that always sits in the same place, saying whose turn it is.
-const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', written: 'AS WRITTEN', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM', rec: 'RECORDING' };
+const TURN_TITLE = { idle: 'READY', cue: 'CUE', you: 'YOUR LINE', think: 'YOUR LINE', written: 'AS WRITTEN', paused: 'PAUSED', done: 'SCENE DONE', problem: 'PROBLEM', rec: 'RECORDING' };
 const TURN_ICON = {
   rec: '<circle cx="12" cy="12" r="6" fill="currentColor"/>',
   idle: '<circle cx="12" cy="12" r="9"/>',
   cue: '<path d="M3 9v6h4l5 4V5L7 9H3zM16 8q5 4 0 8"/>',
   written: '<path d="M6 3h9l4 4v14H6zM9 11h7M9 15h7"/>',
+  think: '<path d="M4 5h16v11H9l-5 4zM8 10.5h.01M12 10.5h.01M16 10.5h.01"/>',
   you: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
   paused: '<path d="M8 5v14M16 5v14"/>',
   done: '<path d="M4 12l5 5L20 7"/>',
@@ -82,7 +83,7 @@ function showOnStage(st, next) {
     if (mine && $('mode').value !== 'record' && $('hideMine').checked) {
       const s = document.createElement('span');
       s.className = 'hidden-line';
-      s.textContent = 'Your line. Say or tap "Line" to see it.';
+      s.textContent = $('mode').value === 'listen' ? 'Your line. Tap "Line" to hear it now.' : 'Your line. Say or tap "Line" to see it.';
       line.append(s);
       $('lineNote').textContent = '';
       return;
@@ -193,6 +194,7 @@ function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
   const lines = $('mode').value === 'lines';
   document.body.classList.toggle('lines-mode', lines);
+  document.body.classList.toggle('listen-mode', $('mode').value === 'listen'); // no spoken commands with the mic off
   $('linesView').hidden = !lines;
   $('linesScene').value = $('scene').value;
   if (lines) renderLines(scene);
@@ -750,26 +752,27 @@ function pauseTapped() {
 async function readBack(item) {
   if ($('hideMine').checked) $('currentLine').textContent = cleanText(item.text);
   log('  read back as written');
-  await sayOther(stripDirections(item.text), me, null, true);
+  await sayOther(stripDirections(item.text), '', null, true); // the plain voice, not his character's (Fable's review)
 }
 
 // Listen mode's turn for his line: the mic stays off, and he gets about the time it takes to say it
 // in his head before the phone reads it. Pause holds the clock; Line ends the wait; Repeat says the
 // cue again.
 async function listenWait(ms) {
-  setStatus('Your line. Say it to yourself.', 'listening');
+  tapCommand = null; // a Line or Repeat tapped during the cue must not skip this pause (Fable's review)
+  setStatus('Your line. Say it to yourself.', '', 'think');
   let left = ms;
   while (left > 0 && running && !stopRequested) {
     const cmd = tapCommand; tapCommand = null;
     if (cmd === 'pause' || cmd === 'resume') {
       setPaused(cmd === 'pause');
       log(paused ? 'paused' : 'resumed');
-      setStatus(paused ? 'Paused. Tap Resume.' : 'Your line. Say it to yourself.', paused ? 'paused' : 'listening');
+      setStatus(paused ? 'Paused. Tap Resume.' : 'Your line. Say it to yourself.', '', paused ? 'paused' : 'think');
     } else if (cmd === 'line') return;
     else if (cmd === 'repeat' && lastCueItem) {
       log('repeating the cue');
       await sayOther(lastCueItem.text, lastCueItem.who, lastCueItem);
-      setStatus('Your line. Say it to yourself.', 'listening');
+      setStatus('Your line. Say it to yourself.', '', 'think');
       left = ms;
     }
     await new Promise((r) => setTimeout(r, 150));
@@ -1090,6 +1093,8 @@ async function runScene() {
   if ($('mode').value === 'lines') return;
   if ($('mode').value === 'record') return runRecord();
   running = true; stopRequested = false; setPaused(false); restarts = 0;
+  // A Listen pass marks nothing, so the last run's results come back after it (Fable's review).
+  const keptRun = $('mode').value === 'listen' ? lastRun : null;
   lastRun = { scene: $('scene').value, stopped: false, rows: new Map() };
   document.body.classList.add('running');
   $('start').textContent = 'Stop';
@@ -1162,16 +1167,17 @@ async function runScene() {
   $('start').textContent = 'Start';
   document.body.classList.remove('running');
   showRunNext(true);
+  if (keptRun) { lastRun = keptRun; renderScript(); }
   if (failed) {
     stopRequested = false;
-    lastRun.stopped = true;
+    if (!keptRun) lastRun.stopped = true;
     renderTally();
     setStatus(`Something went wrong (${failed.message}). Tap Start to try again.`, '', 'problem');
     return;
   }
   if (stopRequested) {
     stopRequested = false;
-    lastRun.stopped = true;
+    if (!keptRun) lastRun.stopped = true;
     renderTally();
     log(`scene stopped; listening restarts: ${restarts}`);
     setStatus(lastRun.rows.size ? 'Stopped. Results so far are below.' : 'Stopped. Tap Start to run it again.', '', 'idle');
@@ -1179,7 +1185,7 @@ async function runScene() {
   }
   renderTally();
   log(`scene end; listening restarts: ${restarts}`);
-  if (!lastRun.rows.size) { setStatus('Scene done. Tap Start to run it again.', '', 'done'); return; }
+  if (keptRun || !lastRun.rows.size) { setStatus('Scene done. Tap Start to run it again.', '', 'done'); return; }
   $('context').open = true;
   setStatus('Scene done. Results are below.', '', 'done');
 }

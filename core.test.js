@@ -297,6 +297,6 @@ test('thinkMs: Listen mode gives a short line a few seconds and a long one more,
   assert.equal(thinkMs('Jeez.'), 2500);
   assert.equal(thinkMs('What is it? What is it?'), 1500 + 6 * 450);
   assert.ok(thinkMs('word '.repeat(30)) > thinkMs('word '.repeat(10)));
-  assert.equal(thinkMs('word '.repeat(200)), 20000);
+  assert.equal(thinkMs('word '.repeat(200)), 45000);
   assert.equal(thinkMs('Bills ... (looking up) bills!'), 2500); // directions and dots are not words
 });

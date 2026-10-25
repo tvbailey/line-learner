@@ -334,5 +334,5 @@ export function voiceFor(name, voiceCount) {
 // breath before the phone reads it, about the time it takes to say it, with a floor and a ceiling.
 export function thinkMs(text) {
   const words = normalize(stripDirections(text)).length;
-  return Math.min(20000, Math.max(2500, 1500 + words * 450));
+  return Math.min(45000, Math.max(2500, 1500 + words * 450));
 }
