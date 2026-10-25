@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024h';
-import { parseScript } from './script.js?v=20261024h';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns } from './plan.js?v=20261024h';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024h';
-import * as voices from './voices.js?v=20261024h';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024i';
+import { parseScript } from './script.js?v=20261024i';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261024i';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024i';
+import * as voices from './voices.js?v=20261024i';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -72,6 +72,7 @@ function showOnStage(st, next) {
   const line = $('currentLine');
   line.textContent = '';
   if (it.kind === 'song') { $('speaker').textContent = 'Song'; line.textContent = it.title; }
+  else if (it.kind === 'summary') { $('speaker').textContent = 'Skipping ahead'; line.textContent = it.text; }
   else if (it.kind !== 'line') { $('speaker').textContent = ' '; line.textContent = it.kind === 'direction' ? `(${it.text})` : ''; }
   else {
     const mine = st.action === 'listen';
@@ -188,7 +189,7 @@ function renderScript() {
   const recording = $('mode').value === 'record';
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: $('skipSongs').checked, keep: Number($('before').value) }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
-  else steps = joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value)), me);
+  else steps = addSkipNotes(joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: $('skipSongs').checked }), picks(), me, Number($('before').value)), me));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   showLastResult('', '');
@@ -198,11 +199,13 @@ function renderScript() {
   steps.forEach((st, i) => {
     if (st.action === 'cue') return;
     const it = st.item;
-    const next = steps.slice(i + 1).find((s) => s.action !== 'cue' && s.item.kind !== 'direction');
+    if (it.kind === 'summary' && st.action === 'show') return; // said only when a run skips (addSkipNotes)
+    const next = steps.slice(i + 1).find((s) => s.action !== 'cue' && s.item.kind !== 'direction' && !(s.item.kind === 'summary' && s.action === 'show'));
     if (it.kind === 'direction' && next && next.item.kind === 'line') { directions.push(it.text); return; }
     const div = document.createElement('div');
     div.id = 'ln' + i;
     if (it.kind === 'song') { div.className = 'ln song'; div.textContent = `Song: ${it.title}`; }
+    else if (it.kind === 'summary') { div.className = 'ln song'; div.textContent = `Skipping ahead: ${it.text}`; }
     else if (it.kind === 'direction') { div.className = 'ln song'; div.textContent = `(${it.text})`; }
     else if (it.kind !== 'line') { div.className = 'ln song'; div.textContent = it.kind === 'songEnd' ? '(end of song)' : '(skip)'; }
     else {
@@ -1014,6 +1017,8 @@ async function runScene() {
     const { action, item } = steps[i];
     if (action === 'show' || action === 'skip') continue;
     if (action === 'cue') { lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item); continue; }
+    // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
+    if (action === 'note') { highlight(i); await sayOther(`Skipping ahead. ${item.text}`); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }

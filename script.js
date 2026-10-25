@@ -1,5 +1,5 @@
 // Reads the plain-text script format (see README) into scenes of items.
-import { normalize } from './core.js?v=20261024h';
+import { normalize } from './core.js?v=20261024i';
 
 // Small stable hash (FNV-1a) so a line's id depends only on its own scene, speaker and words.
 function hash(s) {
@@ -24,6 +24,8 @@ export function parseScript(text) {
     if ((m = line.match(/^\[SONG:\s*(.+?)\]$/i))) { scene.items.push({ kind: 'song', title: m[1].trim() }); return; }
     if (/^\[SKIP TO END OF SONG\]$/i.test(line)) { scene.items.push({ kind: 'skip' }); return; }
     if (/^\[END SONG\]$/i.test(line)) { scene.items.push({ kind: 'songEnd' }); return; }
+    // A short summary of the stretch that follows, said when a run skips it (24 Oct 2026).
+    if ((m = line.match(/^\[SKIPPED:\s*(.+?)\]$/i))) { scene.items.push({ kind: 'summary', text: m[1].trim() }); return; }
     if ((m = line.match(/^\((.*)\)$/))) { scene.items.push({ kind: 'direction', text: m[1].trim() }); return; }
     if ((m = line.match(/^([A-Z0-9][A-Z0-9 .,&'-]*?):\s*(.+)$/))) {
       const who = m[1].trim();

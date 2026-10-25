@@ -69,3 +69,8 @@ test('speaker names may hold "&" and digits', () => {
 test('speaker names may hold commas ("MEN, WOMEN, & KIDS")', () => {
   assert.equal(parseScript('# S\nMEN, WOMEN, & KIDS: ~ A MAJOR AWARD!\n').scenes[0].items[0].who, 'MEN, WOMEN, & KIDS');
 });
+
+test('a [SKIPPED: ...] line is a summary of what a run may skip there', () => {
+  const s = parseScript('# S\nTHE OLD MAN: Hi.\n[SKIPPED: Mother sings.]\nMOTHER: ~ LA\n');
+  assert.deepEqual(s.scenes[0].items[1], { kind: 'summary', text: 'Mother sings.' });
+});

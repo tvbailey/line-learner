@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines, joinMyRuns } from './plan.js';
+import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines, joinMyRuns, addSkipNotes } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -219,4 +219,17 @@ test('joinMyRuns: a cue, a song marker, or a sung line between keeps them apart'
   const items = parseScript('# S\nTHE OLD MAN: One.\n[SONG: G]\nTHE OLD MAN: Two.\nTHE OLD MAN: ~ LA\nTHE OLD MAN: Three.\n').scenes[0].items;
   assert.deepEqual(joinMyRuns(planScene(items, 'THE OLD MAN'), 'THE OLD MAN').filter((s) => s.action === 'listen').map((s) => s.item.text),
     ['One.', 'Two.', 'LA', 'Three.']);
+});
+
+test('addSkipNotes: when a run skips two or more lines after a summary, the summary is said first (Thomas, 24 Oct 2026)', () => {
+  const items = parseScript('# S\nTHE OLD MAN: Hi.\n[SKIPPED: Mother sings and the boys argue.]\nA: one\nB: two\nA: three\nB: four\nTHE OLD MAN: Bye.\n').scenes[0].items;
+  const out = addSkipNotes(trimCues(planScene(items, 'THE OLD MAN'), 2));
+  assert.deepEqual(out.map((s) => `${s.action}:${s.item.text}`),
+    ['listen:Hi.', 'show:Mother sings and the boys argue.', 'skip:one', 'skip:two', 'note:Mother sings and the boys argue.', 'speak:three', 'speak:four', 'listen:Bye.']);
+});
+
+test('addSkipNotes: nothing is said when the stretch is read, or only one line is skipped, or the scene just ends', () => {
+  const items = parseScript('# S\nTHE OLD MAN: Hi.\n[SKIPPED: A note.]\nA: one\nB: two\nTHE OLD MAN: Bye.\n[SKIPPED: End note.]\nA: x\nB: y\nA: z\n').scenes[0].items;
+  assert.equal(addSkipNotes(trimCues(planScene(items, 'THE OLD MAN'), 1)).filter((s) => s.action === 'note').length, 0);
+  assert.equal(addSkipNotes(trimCues(planScene(items, 'THE OLD MAN'), 0)).filter((s) => s.action === 'note').length, 0);
 });
