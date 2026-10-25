@@ -233,3 +233,11 @@ test('addSkipNotes: nothing is said when the stretch is read, or only one line i
   assert.equal(addSkipNotes(trimCues(planScene(items, 'THE OLD MAN'), 1)).filter((s) => s.action === 'note').length, 0);
   assert.equal(addSkipNotes(trimCues(planScene(items, 'THE OLD MAN'), 0)).filter((s) => s.action === 'note').length, 0);
 });
+
+test('addSkipNotes: a line he kept in the middle of a stretch does not cancel its summary', () => {
+  const items = parseScript('# S\nTHE OLD MAN: Hi.\n[SKIPPED: The family eats.]\nA: kept\nB: two\nA: three\nB: four\nA: five\nTHE OLD MAN: Bye.\n').scenes[0].items;
+  const picks = new Map([[items[2].id, 'in']]);
+  const out = addSkipNotes(pickLines(planScene(items, 'THE OLD MAN'), picks, 'THE OLD MAN', 1));
+  assert.deepEqual(out.filter((s) => s.action !== 'show').map((s) => `${s.action}:${s.item.text}`),
+    ['listen:Hi.', 'speak:kept', 'skip:two', 'skip:three', 'skip:four', 'note:The family eats.', 'speak:five', 'listen:Bye.']);
+});

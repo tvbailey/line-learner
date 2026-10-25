@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261024j';
+import { stripDirections, cleanText } from './core.js?v=20261024k';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -228,17 +228,22 @@ export function joinMyRuns(steps, me) {
 // the stretch is read, when one line is skipped, or when the scene simply ends.
 export function addSkipNotes(steps) {
   const out = [];
-  let pending = [];
-  let skipped = 0;
+  let pending = [];  // summaries not yet said
+  let skipped = 0;   // lines skipped since the last line read or listened for
   for (const st of steps) {
-    if (st.item.kind === 'summary') { if (!skipped) pending = []; pending.push(st.item.text); out.push(st); continue; }
-    if (st.item.kind === 'line' && st.action === 'skip') { if (pending.length) skipped++; out.push(st); continue; }
+    if (st.item.kind === 'summary') { pending.push(st.item.text); out.push(st); continue; }
+    if (st.item.kind === 'line' && st.action === 'skip') { skipped++; out.push(st); continue; }
     if (st.item.kind === 'line') {
-      // Several stacked up (a whole song skipped): the first and the last, so it stays short.
-      const said = pending.length > 2 ? [pending[0], pending[pending.length - 1]] : pending;
-      if (pending.length && skipped >= 2) out.push({ action: 'note', item: { kind: 'summary', text: said.join(' ') } });
-      pending = [];
+      if (pending.length && skipped >= 2) {
+        // Several stacked up (a whole song skipped): the first and the last, so it stays short.
+        const said = pending.length > 2 ? [pending[0], pending[pending.length - 1]] : pending;
+        out.push({ action: 'note', item: { kind: 'summary', text: said.join(' ') } });
+        pending = [];
+      }
       skipped = 0;
+      // Someone else's kept line leaves the summary waiting (his picks keep single lines inside
+      // skipped stretches, 24 Oct 2026); one of his own lines closes the stretch.
+      if (st.action === 'listen') pending = [];
     }
     out.push(st);
   }
