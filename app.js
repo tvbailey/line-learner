@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261024l';
-import { parseScript } from './script.js?v=20261024l';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261024l';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261024l';
-import * as voices from './voices.js?v=20261024l';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor } from './core.js?v=20261025a';
+import { parseScript } from './script.js?v=20261025a';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025a';
+import * as voices from './voices.js?v=20261025a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -237,6 +237,7 @@ function renderScript() {
     }
     $('script').append(div);
   });
+  showRunNext(!running);
   markRecorded();
 }
 
@@ -1152,7 +1153,7 @@ async function setup() {
   $('skipSongs').onchange = () => { store.set('ll-skip-songs', $('skipSongs').checked ? 'on' : 'off'); if (!running) renderScript(); };
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
-  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) { renderScript(); showRunNext(false); } };
+  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };
   $('file').onchange = async () => {
     const f = $('file').files[0];
     if (!f) return;
@@ -1163,14 +1164,22 @@ async function setup() {
   if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
   $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; store.set('ll-gap', $('gap').value); };
   $('start').onclick = () => (running ? stopRun() : runScene());
-  $('runNext').onclick = $('runNext2').onclick = () => {
+  // Next scene works any time a scene isn't running (Thomas, 25 Oct 2026). The one by Start goes
+  // to the top of the page; the lower one, used while reading, goes to the top of "Scene around
+  // this line".
+  const nextScene = (toScript) => {
     const n = Number($('scene').value) + 1;
     if (!script.scenes[n] || running) return;
     $('scene').value = n;
     $('scene').onchange();
-    scrollTo(0, 0);
     setStatus('Tap Start');
+    if (!toScript) { scrollTo(0, 0); return; }
+    $('context').open = true;
+    $('script').scrollTop = 0;
+    $('context').scrollIntoView({ block: 'start' });
   };
+  $('runNext').onclick = () => nextScene(false);
+  $('runNext2').onclick = () => nextScene(true);
   $('pause').onclick = pauseTapped;
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
   $('lineBtn').onclick = () => { tapCommand = 'line'; };
