@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025n';
-import { parseScript } from './script.js?v=20261025n';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025n';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025n';
-import * as voices from './voices.js?v=20261025n';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025o';
+import { parseScript } from './script.js?v=20261025o';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025o';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025o';
+import * as voices from './voices.js?v=20261025o';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -290,6 +290,15 @@ function highlight(i) {
     box.scrollTo({ top: el.offsetTop - box.offsetTop - box.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
   }
   if (steps[i]) showOnStage(steps[i], nextHeard(i));
+}
+
+// A new scene picked (or Next scene): the stage shows the first line the run will say, not the last
+// line of the scene before (Thomas, 25 Oct 2026).
+function previewScene() {
+  const i = steps.findIndex((s) => !['show', 'skip'].includes(s.action));
+  showLastResult('', '');
+  if (i < 0) { $('speaker').textContent = ' '; $('currentLine').textContent = 'Tap Start.'; $('lineNote').textContent = ''; return; }
+  showOnStage(steps[i], nextHeard(i));
 }
 
 // The next step that is said aloud or listened for, past directions and skipped lines, so "Your
@@ -1349,7 +1358,7 @@ async function setup() {
   $('checkLines').onchange = () => store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off');
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
-  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) renderScript(); };
+  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) { renderScript(); previewScene(); } };
   $('file').onchange = async () => {
     const f = $('file').files[0];
     if (!f) return;
