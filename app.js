@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025w';
-import { parseScript } from './script.js?v=20261025w';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261025w';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025w';
-import * as voices from './voices.js?v=20261025w';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025x';
+import { parseScript } from './script.js?v=20261025x';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261025x';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025x';
+import * as voices from './voices.js?v=20261025x';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -1327,7 +1327,9 @@ async function runScene() {
       await listenWait(thinkMs(item.text));
       if (stopRequested) break;
       log(`line ${i}: listen`);
-      await readBack(item);
+      // The switch counts in Listen too (Thomas, 25 Oct 2026: off, it read back anyway); off, the
+      // pause is all there is.
+      if ($('readBack').checked) await readBack(item);
       continue;
     }
     const soundOnly = isSoundOnly(expected);
