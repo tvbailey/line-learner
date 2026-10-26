@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025o';
-import { parseScript } from './script.js?v=20261025o';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025o';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025o';
-import * as voices from './voices.js?v=20261025o';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025q';
+import { parseScript } from './script.js?v=20261025q';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025q';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025q';
+import * as voices from './voices.js?v=20261025q';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -785,9 +785,42 @@ async function readBack(item) {
   const parts = (item.joined || [item.id]).map((id) => sceneItem(id) || item);
   log(`  read back as written (${parts.filter((p) => sceneClips.has(p.id)).length} of ${parts.length} in the AI voice)`);
   // The plain voice, not his character's, where there is no clip (Fable's review).
-  for (const p of parts) {
+  for (const [n, p] of parts.entries()) {
     if (!running || stopRequested) return;
+    // Stage action between his lines: a pause, and what happens, said by a narrator (Thomas, 25 Oct 2026).
+    if (n > 0) await stageGap(`${p.id}~before`, 800);
+    const first = sceneClips.get(`${p.id}~1`);
+    if (first && first.of > 1) {
+      // A direction inside the line: its parts, with the action between them.
+      for (let k = 1; k <= first.of; k++) {
+        if (!running || stopRequested) return;
+        if (k > 1) await stageGap(`${p.id}~gap${k - 1}`, 700);
+        const part = sceneClips.get(`${p.id}~${k}`);
+        await sayOther(part ? part.text : '', '', part ? { id: `${p.id}~${k}` } : null, true);
+      }
+      continue;
+    }
     await sayOther(stripDirections(p.text), '', sceneClips.has(p.id) ? p : null, true);
+  }
+}
+
+// One stage-action gap in the read-back: its narration clip with a short silence either side, or,
+// with "Describe stage action" off or no clip, just a pause.
+async function stageGap(key, pauseMs) {
+  const c = sceneClips.get(key);
+  log(`    stage action: ${!c ? 'pause' : c.text === '(pause)' ? 'pause (as written)' : $('narrate').checked ? 'narrated' : 'pause (narration off)'}`);
+  if (c && (c.text === '(pause)' || $('narrate').checked)) {
+    await waitRun(250);
+    await sayOther(c.text, '', { id: key }, true);
+    await waitRun(c.pause || 0);
+  } else await waitRun(c && c.pause ? c.pause + 600 : pauseMs);
+}
+
+// Waits during a run; Pause holds the clock and Stop ends the wait.
+async function waitRun(ms) {
+  while (ms > 0 && running && !stopRequested) {
+    await new Promise((r) => setTimeout(r, 100));
+    if (!paused) ms -= 100;
   }
 }
 // Any scene: ids carry their scene, and the scene list can be changed mid-run (Fable's review).
@@ -821,7 +854,7 @@ async function listenWait(ms) {
 async function loadSceneClips() {
   sceneClips = new Map();
   let cues = 0;
-  let mine = 0, mineVoiced = 0;
+  let mine = 0, mineVoiced = 0, recorded = 0;
   for (const st of steps) {
     if (st.item.kind !== 'line' || st.action === 'show') continue;
     // His own lines: the clips his line is read back in (each line of a joined stretch).
@@ -832,14 +865,22 @@ async function loadSceneClips() {
         mine++;
         // Only the AI read-back clips, never his own Record-mode takes (Fable's review, 25 Oct 2026).
         try { const c = await voices.getClip(id); if (c && c.source === 'ai' && voices.clipFits(c, it, prevLineText(it))) { sceneClips.set(id, c); mineVoiced++; } } catch (_) { /* no storage */ }
+        // Its stage-action pieces (gaps.py): a narration before it, or its parts and the gaps between.
+        const piece = async (key) => {
+          try { const c = await voices.getClip(key); if (c && c.source === 'ai' && c.parentText === it.text) { sceneClips.set(key, c); return c; } } catch (_) { /* no storage */ }
+          return null;
+        };
+        await piece(`${id}~before`);
+        const first = await piece(`${id}~1`);
+        for (let k = 2; first && k <= first.of; k++) { await piece(`${id}~${k}`); await piece(`${id}~gap${k - 1}`); }
       }
       continue;
     }
     if (st.action !== 'speak' && st.action !== 'cue') continue; // skipped lines aren't cues (Fable's review)
     cues++;
-    try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item, prevLineText(st.item))) sceneClips.set(st.item.id, c); } catch (_) { /* no storage */ }
+    try { const c = await voices.getClip(st.item.id); if (voices.clipFits(c, st.item, prevLineText(st.item))) { sceneClips.set(st.item.id, c); recorded++; } } catch (_) { /* no storage */ }
   }
-  return { cues, recorded: sceneClips.size - mineVoiced, mine, mineVoiced };
+  return { cues, recorded, mine, mineVoiced };
 }
 
 // Start listening for his line. The phone's microphone takes a moment to come on and words said
@@ -1274,7 +1315,7 @@ async function copyReport() {
     `when: ${new Date().toString()}`,
     `browser: ${navigator.userAgent}`,
     `listening supported: ${!!(window.SpeechRecognition || window.webkitSpeechRecognition)}`,
-    `settings: mode ${$('mode').value}, wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}, hide my line ${$('hideMine').checked}, read my line after ${$('readBack').checked}, check my lines ${$('checkLines').checked}`,
+    `settings: mode ${$('mode').value}, wait ${$('gap').value}s, listen with ${engine()}, continuous ${$('continuous').checked}, on-phone ${$('local').checked}, bluetooth ${$('bluetooth').checked}, hide my line ${$('hideMine').checked}, read my line after ${$('readBack').checked}, describe stage action ${$('narrate').checked}, check my lines ${$('checkLines').checked}`,
     `listening restarts: ${restarts}`,
     // His in/out choices (line ids only), so Reginald can see where runs skip.
     `read before: ${$('before').value}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
@@ -1354,6 +1395,8 @@ async function setup() {
   // Read-back starts on and checking starts off (Thomas, 25 Oct 2026); either is his to switch.
   $('readBack').checked = store.get('ll-read-back') !== 'off';
   $('readBack').onchange = () => store.set('ll-read-back', $('readBack').checked ? 'on' : 'off');
+  $('narrate').checked = store.get('ll-narrate') !== 'off';
+  $('narrate').onchange = () => store.set('ll-narrate', $('narrate').checked ? 'on' : 'off');
   $('checkLines').checked = store.get('ll-check-lines') === 'on';
   $('checkLines').onchange = () => store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off');
   const savedGap = store.get('ll-gap');
