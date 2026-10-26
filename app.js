@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025r';
-import { parseScript } from './script.js?v=20261025r';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025r';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025r';
-import * as voices from './voices.js?v=20261025r';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025t';
+import { parseScript } from './script.js?v=20261025t';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase } from './plan.js?v=20261025t';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025t';
+import * as voices from './voices.js?v=20261025t';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -202,7 +202,7 @@ function renderScript() {
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: true, keep: Number($('before').value), picks: picks() }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
   // The singing always starts out; "Dialogue only" went once any line or song could be tapped in or out (Thomas, 25 Oct 2026).
-  else steps = addSkipNotes(joinMyRuns(pickLines(planScene(scene.items, me, { skipSongs: true }), picks(), me, Number($('before').value)), me));
+  else steps = addSkipNotes(splitAtAction(pickLines(planScene(scene.items, me, { skipSongs: true }), picks(), me, Number($('before').value)), me));
   $('sceneName').textContent = scene.title;
   $('script').innerHTML = '';
   if (running || !lastRun) showLastResult('', '');
@@ -249,7 +249,7 @@ function renderScript() {
         pick.textContent = st.action === 'skip' ? 'Out' : 'In'; // in or out of the next run (shortened, Thomas, 25 Oct 2026)
         div.onclick = (e) => {
           if (e.target.closest('button') || running) return;
-          (it.joined || [it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1));
+          (it.joined || [it.parent || it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1));
         };
       }
       if (pick) div.append(pick);
@@ -792,29 +792,25 @@ async function readBack(item) {
 
 async function readParts(parts) {
   // The plain voice, not his character's, where there is no clip (Fable's review).
-  for (const [n, p] of parts.entries()) {
+  for (const p of parts) {
     if (!running || stopRequested) return;
-    // Stage action between his lines: a pause, and what happens, said by a narrator (Thomas, 25 Oct 2026).
-    if (n > 0) await stageGap(`${p.id}~before`, 800);
-    const first = sceneClips.get(`${p.id}~1`);
-    if (first && first.of > 1) {
-      // A direction inside the line: its parts, with the action between them.
-      for (let k = 1; k <= first.of; k++) {
-        if (!running || stopRequested) return;
-        if (k > 1) await stageGap(`${p.id}~gap${k - 1}`, 700);
-        const part = sceneClips.get(`${p.id}~${k}`);
-        await sayOther(part ? part.text : '', '', part ? { id: `${p.id}~${k}` } : null, true);
-      }
-      continue;
-    }
     await sayOther(stripDirections(p.text), '', sceneClips.has(p.id) ? p : null, true);
   }
 }
 
-// One stage-action gap in the read-back: its narration clip with a short silence either side, or,
-// with "Describe stage action" off or no clip, just a pause.
-async function stageGap(key, pauseMs) {
+// A stage step (splitAtAction): the action between his lines, or inside one, said by the AI
+// narrator where there is a clip, else by the plain phone voice (Thomas, 25 Oct 2026: "for now you
+// can use the robot voice"), with a short silence either side; "Describe stage action" off, a pause.
+async function stageGap(key, pauseMs, text = '') {
   const c = sceneClips.get(key);
+  setStatus('Stage action', '', 'written');
+  if (!c && text && $('narrate').checked) {
+    log('    stage action: said by the phone');
+    await waitRun(250);
+    await sayOther(cleanText(nameCase(text)), '', null, 'stage');
+    await waitRun(400);
+    return;
+  }
   log(`    stage action: ${!c ? 'pause' : c.text === '(pause)' ? 'pause (as written)' : $('narrate').checked ? 'narrated' : 'pause (narration off)'}`);
   if (c && (c.text === '(pause)' || $('narrate').checked)) {
     await waitRun(250);
@@ -863,28 +859,22 @@ async function loadSceneClips() {
   let cues = 0;
   let mine = 0, mineVoiced = 0, recorded = 0;
   for (const st of steps) {
+    // The narration for a stage step, made for the line it belongs to.
+    if (st.action === 'stage') {
+      const owner = sceneItem(st.item.key.split('~')[0]);
+      try { const c = await voices.getClip(st.item.key); if (c && c.source === 'ai' && owner && c.parentText === owner.text) sceneClips.set(st.item.key, c); } catch (_) { /* no storage */ }
+      continue;
+    }
     if (st.item.kind !== 'line' || st.action === 'show') continue;
-    // His own lines: the clips his line is read back in (each line of a joined stretch).
+    // His own lines: the AI clip each is read back in, never his Record-mode takes (Fable's review,
+    // 25 Oct 2026). A part of a line split at stage action (splitAtAction) has a clip of its own,
+    // made for that line's text and that number of parts (voicer/gaps.py).
     if (st.action === 'listen') {
-      for (const id of st.item.joined || [st.item.id]) {
-        const it = sceneItem(id);
-        if (!it) continue;
-        mine++;
-        // Only the AI read-back clips, never his own Record-mode takes (Fable's review, 25 Oct 2026).
-        try { const c = await voices.getClip(id); if (c && c.source === 'ai' && voices.clipFits(c, it, prevLineText(it))) { sceneClips.set(id, c); mineVoiced++; } } catch (_) { /* no storage */ }
-        // Its stage-action pieces (gaps.py): a narration before it, or its parts and the gaps between.
-        const piece = async (key) => {
-          try { const c = await voices.getClip(key); if (c && c.source === 'ai' && c.parentText === it.text) { sceneClips.set(key, c); return c; } } catch (_) { /* no storage */ }
-          return null;
-        };
-        await piece(`${id}~before`);
-        const first = await piece(`${id}~1`);
-        let whole = !!first;
-        for (let k = 2; first && k <= first.of; k++) { if (!(await piece(`${id}~${k}`))) whole = false; await piece(`${id}~gap${k - 1}`); }
-        // A part missing: none of the parts play, and the whole line is read instead (Fable's review).
-        if (first && !whole) for (let k = 1; k <= first.of; k++) sceneClips.delete(`${id}~${k}`);
-        else if (first && !sceneClips.has(id)) mineVoiced++;
-      }
+      mine++;
+      const it = sceneItem(st.item.parent || st.item.id);
+      if (!it) continue;
+      const fits = (c) => c && c.source === 'ai' && (st.item.parent ? c.parentText === it.text && c.of === st.item.of : voices.clipFits(c, it, prevLineText(it)));
+      try { const c = await voices.getClip(st.item.id); if (fits(c)) { sceneClips.set(st.item.id, c); mineVoiced++; } } catch (_) { /* no storage */ }
       continue;
     }
     if (st.action !== 'speak' && st.action !== 'cue') continue; // skipped lines aren't cues (Fable's review)
@@ -1238,6 +1228,7 @@ async function runScene() {
     // The cue right before his line shows on the stage too, with "Your line is next".
     if (action === 'cue') { highlight(i); lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item, false, true); continue; }
     // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
+    if (action === 'stage') { highlight(i); await stageGap(item.key, 900, item.text); continue; }
     if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
     highlight(i);
     if (action === 'speak') {

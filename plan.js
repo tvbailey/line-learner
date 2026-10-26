@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261025r';
+import { stripDirections, cleanText } from './core.js?v=20261025t';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -134,7 +134,7 @@ export function linesOnly(items, me, left = new Set()) {
 const plainLine = (text) => cleanText(stripDirections(text));
 
 // "THE OLD MAN" -> "The Old Man"; leaves ordinary words and two-letter capitals (TV, OK) alone.
-const nameCase = (s) => s.replace(/\b[A-Z][A-Z']{2,}\b/g, (w) => w[0] + w.slice(1).toLowerCase());
+export const nameCase = (s) => s.replace(/\b[A-Z][A-Z']{2,}\b/g, (w) => w[0] + w.slice(1).toLowerCase());
 
 // Sentences end at . ! or ? followed by a space; an ellipsis, an initial ("B.B.") and titles
 // like "Mr." don't count.
@@ -220,6 +220,45 @@ export function joinMyRuns(steps, me) {
     if (joined.length === 1) { out.push(st); continue; }
     out.push({ ...st, item: { ...st.item, text, joined } });
     i = j - 1;
+  }
+  return out;
+}
+
+// Run and Listen split his lines at stage action instead (Thomas, 25 Oct 2026: "if there's stage
+// direction and like some event, that my second part of the line depends on, I want that line
+// broken up", the direction said between; Lines only still joins). A direction between two of his
+// lines becomes a 'stage' step said aloud; a direction inside one of his lines splits it into parts
+// (ids <line>~1, ~2 ...) with a 'stage' step between. Each stage step's `key` names the narration
+// clip that may say it (voicer/gaps.py): <next line>~before, or <line>~gap<k>.
+export function splitAtAction(steps, me) {
+  const out = [];
+  const his = (st) => st && st.action === 'listen' && st.item.kind === 'line' && !st.item.sung && isMine(st.item, me);
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    if (st.action === 'show' && st.item.kind === 'direction' && his(out[out.length - 1])) {
+      let k = i;
+      while (k < steps.length && steps[k].action === 'show' && steps[k].item.kind === 'direction') k++;
+      if (his(steps[k])) {
+        out.push({ action: 'stage', item: { kind: 'direction', text: steps.slice(i, k).map((s) => s.item.text).join(' '), key: `${steps[k].item.id}~before` } });
+        i = k - 1;
+        continue;
+      }
+    }
+    if (!his(st)) { out.push(st); continue; }
+    // Directions with words both before and after them, inside the line.
+    const pieces = st.item.text.split(/(\([^)]*\))/);
+    const cuts = [];
+    pieces.forEach((p, n) => {
+      if (n % 2 && pieces.slice(0, n).some((x, j) => j % 2 === 0 && x.trim()) && pieces.slice(n + 1).some((x, j) => (n + 1 + j) % 2 === 0 && x.trim())) cuts.push(n);
+    });
+    if (!cuts.length) { out.push(st); continue; }
+    let from = 0;
+    cuts.forEach((c, k) => {
+      out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${k + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from, c).join('').trim() } });
+      out.push({ action: 'stage', item: { kind: 'direction', text: pieces[c].slice(1, -1).trim(), key: `${st.item.id}~gap${k + 1}` } });
+      from = c + 1;
+    });
+    out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${cuts.length + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from).join('').trim() } });
   }
   return out;
 }

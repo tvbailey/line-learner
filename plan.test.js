@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseScript } from './script.js';
-import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines, joinMyRuns, addSkipNotes } from './plan.js';
+import { planScene, trimCues, recordSteps, linesOnly, lastSentence, shortDirection, includeLines, pickLines, joinMyRuns, splitAtAction, addSkipNotes } from './plan.js';
 
 const plan = (text) => planScene(parseScript(text).scenes[0].items, 'THE OLD MAN')
   .map((s) => `${s.action}:${s.item.text || s.item.title || s.item.kind}`);
@@ -259,4 +259,26 @@ test('recordSteps follows his picks: a sung line tapped in can be recorded (Fabl
   assert.deepEqual(ids(new Map()), ['two', 'Mine.']);
   assert.deepEqual(ids(new Map([[items[1].id, 'in']])), ['LA LA', 'two', 'Mine.']);
   assert.deepEqual(ids(new Map([[items[2].id, 'out']])), ['Mine.']);
+});
+
+const showSplit = (steps) => steps.map((s) => `${s.action}:${s.item.text}${s.item.key ? ' @' + s.item.key.replace(/^[^~]+/, '') : ''}`);
+
+test('splitAtAction: the stage action between two of his lines is said, and each line is its own turn (Thomas, 25 Oct 2026)', () => {
+  const items = parseScript('# S\nMOTHER: Hi.\nTHE OLD MAN: One.\n(He falls.)\nTHE OLD MAN: Two.\n').scenes[0].items;
+  assert.deepEqual(showSplit(splitAtAction(planScene(items, 'THE OLD MAN'), 'THE OLD MAN')),
+    ['speak:Hi.', 'listen:One.', 'stage:He falls. @~before', 'listen:Two.']);
+});
+
+test('splitAtAction: a direction inside one of his lines splits it into parts with the action between', () => {
+  const items = parseScript('# S\nTHE OLD MAN: (sighs) This looks cooked. (Taking a pinch.) Mmm ... {turkey}.\n').scenes[0].items;
+  const out = splitAtAction(planScene(items, 'THE OLD MAN'), 'THE OLD MAN');
+  assert.deepEqual(showSplit(out), ['listen:(sighs) This looks cooked.', 'stage:Taking a pinch. @~gap1', 'listen:Mmm ... {turkey}.']);
+  assert.equal(out[0].item.id, `${items[0].id}~1`);
+  assert.equal(out[2].item.parent, items[0].id);
+});
+
+test('splitAtAction: directions next to someone else\'s line, or only at a line\'s start or end, stay as they are', () => {
+  const items = parseScript('# S\nTHE OLD MAN: One. (Exits.)\n(Door slams.)\nMOTHER: Well.\nTHE OLD MAN: (calling) Two.\n').scenes[0].items;
+  assert.deepEqual(showSplit(splitAtAction(planScene(items, 'THE OLD MAN'), 'THE OLD MAN')),
+    ['listen:One. (Exits.)', 'show:Door slams.', 'speak:Well.', 'listen:(calling) Two.']);
 });
