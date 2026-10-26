@@ -282,3 +282,12 @@ test('splitAtAction: directions next to someone else\'s line, or only at a line\
   assert.deepEqual(showSplit(splitAtAction(planScene(items, 'THE OLD MAN'), 'THE OLD MAN')),
     ['listen:One. (Exits.)', 'show:Door slams.', 'speak:Well.', 'listen:(calling) Two.']);
 });
+
+test('splitAtAction: a beat or delivery note doesn\'t split; directions side by side are one stage step (Fable\'s review)', () => {
+  const items = parseScript('# S\nTHE OLD MAN: One small spark (pause) and a lesson. (Briefly pauses.) Yes. (Quickly.) Go.\nTHE OLD MAN: Oh! (He drops it.) (Beat.) Oh no.\n').scenes[0].items;
+  assert.deepEqual(showSplit(splitAtAction(planScene(items, 'THE OLD MAN'), 'THE OLD MAN')),
+    ['listen:One small spark (pause) and a lesson. (Briefly pauses.) Yes. (Quickly.) Go.', 'listen:Oh!', 'stage:He drops it. @~gap1', 'listen:(Beat.) Oh no.']);
+  // Two stage directions side by side are one stage step, never an empty turn.
+  const two = parseScript('# S\nTHE OLD MAN: Oh! (He drops it.) (It breaks.) Oh no.\n').scenes[0].items;
+  assert.deepEqual(showSplit(splitAtAction(planScene(two, 'THE OLD MAN'), 'THE OLD MAN')), ['listen:Oh!', 'stage:He drops it. It breaks. @~gap1', 'listen:Oh no.']);
+});

@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025t';
-import { parseScript } from './script.js?v=20261025t';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase } from './plan.js?v=20261025t';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025t';
-import * as voices from './voices.js?v=20261025t';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025u';
+import { parseScript } from './script.js?v=20261025u';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase } from './plan.js?v=20261025u';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025u';
+import * as voices from './voices.js?v=20261025u';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -276,7 +276,10 @@ async function markRecorded() {
     try { clip = await voices.getClip(st.item.id); } catch (_) { return; }
     const el = $('ln' + i);
     if (!el || el.querySelector('.rec-mark')) continue;
-    if (voices.clipFits(clip, st.item, prevLineText(st.item))) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
+    // A part of a split line: its clip is made for the whole line's text (Fable's review).
+    const parent = st.item.parent && sceneItem(st.item.parent);
+    const fits = parent ? !!clip && clip.source === 'ai' && clip.parentText === parent.text && clip.of === st.item.of : voices.clipFits(clip, st.item, prevLineText(st.item));
+    if (fits) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
   }
 }
 
@@ -767,7 +770,7 @@ async function sayOther(text, who = '', item = null, written = false, mineNext =
 let inReadBack = false;
 function pauseTapped() {
   if (running && (inCue || inReadBack)) {
-    if (paused) { setPaused(false); log('resumed'); if (!inCue) setStatus('Your line as written', '', 'written'); return; }
+    if (paused) { setPaused(false); log('resumed'); if (!inCue) setStatus($('turnTitle').textContent === 'AS WRITTEN' ? 'Your line as written' : 'Stage action', '', 'written'); return; }
     setPaused(true);
     log('paused mid-cue');
     setStatus('Paused. Tap Resume.', 'paused');
@@ -1228,7 +1231,8 @@ async function runScene() {
     // The cue right before his line shows on the stage too, with "Your line is next".
     if (action === 'cue') { highlight(i); lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item, false, true); continue; }
     // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
-    if (action === 'stage') { highlight(i); await stageGap(item.key, 900, item.text); continue; }
+    // Pause holds a stage step at once, its silences too, as in the read-back (Fable's review).
+    if (action === 'stage') { highlight(i); inReadBack = true; try { await stageGap(item.key, 900, item.text); } finally { inReadBack = false; } continue; }
     if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
     highlight(i);
     if (action === 'speak') {

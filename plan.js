@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261025t';
+import { stripDirections, cleanText } from './core.js?v=20261025u';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -230,6 +230,8 @@ export function joinMyRuns(steps, me) {
 // lines becomes a 'stage' step said aloud; a direction inside one of his lines splits it into parts
 // (ids <line>~1, ~2 ...) with a 'stage' step between. Each stage step's `key` names the narration
 // clip that may say it (voicer/gaps.py): <next line>~before, or <line>~gap<k>.
+// A beat or a delivery note inside a line: not stage action.
+const BEAT = /^(a\s+)?((brief(ly)?|short|long)\s+)?(beat|pause|pauses)\.?$|^(quickly|slowly|softly|louder)\.?$/i;
 export function splitAtAction(steps, me) {
   const out = [];
   const his = (st) => st && st.action === 'listen' && st.item.kind === 'line' && !st.item.sung && isMine(st.item, me);
@@ -245,18 +247,25 @@ export function splitAtAction(steps, me) {
       }
     }
     if (!his(st)) { out.push(st); continue; }
-    // Directions with words both before and after them, inside the line.
+    // Directions with words both before and after them, inside the line. A beat or a delivery note
+    // ("(pause)", "(Quickly.)") isn't stage action and doesn't split; directions side by side are one
+    // cut (Fable's review, 25 Oct 2026: they made an empty turn).
     const pieces = st.item.text.split(/(\([^)]*\))/);
+    const words = (x) => /[A-Za-z0-9]/.test(stripDirections(x));
     const cuts = [];
     pieces.forEach((p, n) => {
-      if (n % 2 && pieces.slice(0, n).some((x, j) => j % 2 === 0 && x.trim()) && pieces.slice(n + 1).some((x, j) => (n + 1 + j) % 2 === 0 && x.trim())) cuts.push(n);
+      if (!(n % 2) || BEAT.test(p.slice(1, -1).trim())) return;
+      if (!words(pieces.slice(0, n).join('')) || !words(pieces.slice(n + 1).join(''))) return;
+      const prev = cuts[cuts.length - 1];
+      if (prev && !words(pieces.slice(prev[prev.length - 1] + 1, n).join(''))) prev.push(n);
+      else cuts.push([n]);
     });
     if (!cuts.length) { out.push(st); continue; }
     let from = 0;
-    cuts.forEach((c, k) => {
-      out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${k + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from, c).join('').trim() } });
-      out.push({ action: 'stage', item: { kind: 'direction', text: pieces[c].slice(1, -1).trim(), key: `${st.item.id}~gap${k + 1}` } });
-      from = c + 1;
+    cuts.forEach((group, k) => {
+      out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${k + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from, group[0]).join('').trim() } });
+      out.push({ action: 'stage', item: { kind: 'direction', text: group.map((c) => pieces[c].slice(1, -1).trim()).join(' '), key: `${st.item.id}~gap${k + 1}` } });
+      from = group[group.length - 1] + 1;
     });
     out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${cuts.length + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from).join('').trim() } });
   }
