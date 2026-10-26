@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025q';
-import { parseScript } from './script.js?v=20261025q';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025q';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025q';
-import * as voices from './voices.js?v=20261025q';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025r';
+import { parseScript } from './script.js?v=20261025r';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, joinMyRuns, addSkipNotes } from './plan.js?v=20261025r';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025r';
+import * as voices from './voices.js?v=20261025r';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -749,7 +749,7 @@ async function sayOther(text, who = '', item = null, written = false, mineNext =
     for (;;) {
       while (paused && running && !stopRequested) await new Promise((r) => setTimeout(r, 150));
       if (!running || stopRequested) return;
-      if (written) setStatus('Your line as written', '', 'written');
+      if (written) setStatus(written === 'stage' ? 'Stage action' : 'Your line as written', '', 'written');
       else setStatus((who ? `${who} is speaking` : 'Reading the cue...') + (mineNext ? '. Your line is next.' : ''), '', 'cue');
       const clip = item && sceneClips.get(item.id);
       let played = false;
@@ -763,9 +763,11 @@ async function sayOther(text, who = '', item = null, written = false, mineNext =
   } finally { inCue = false; }
 }
 
+// The whole read-back, its pauses and narrations too, pauses at once like a cue (Fable's review).
+let inReadBack = false;
 function pauseTapped() {
-  if (running && inCue) {
-    if (paused) { setPaused(false); log('resumed'); return; }
+  if (running && (inCue || inReadBack)) {
+    if (paused) { setPaused(false); log('resumed'); if (!inCue) setStatus('Your line as written', '', 'written'); return; }
     setPaused(true);
     log('paused mid-cue');
     setStatus('Paused. Tap Resume.', 'paused');
@@ -783,7 +785,12 @@ function pauseTapped() {
 async function readBack(item) {
   if ($('hideMine').checked) $('currentLine').textContent = cleanText(item.text);
   const parts = (item.joined || [item.id]).map((id) => sceneItem(id) || item);
-  log(`  read back as written (${parts.filter((p) => sceneClips.has(p.id)).length} of ${parts.length} in the AI voice)`);
+  log(`  read back as written (${parts.filter((p) => sceneClips.has(p.id) || sceneClips.has(`${p.id}~1`)).length} of ${parts.length} in the AI voice)`);
+  inReadBack = true;
+  try { await readParts(parts); } finally { inReadBack = false; }
+}
+
+async function readParts(parts) {
   // The plain voice, not his character's, where there is no clip (Fable's review).
   for (const [n, p] of parts.entries()) {
     if (!running || stopRequested) return;
@@ -811,7 +818,7 @@ async function stageGap(key, pauseMs) {
   log(`    stage action: ${!c ? 'pause' : c.text === '(pause)' ? 'pause (as written)' : $('narrate').checked ? 'narrated' : 'pause (narration off)'}`);
   if (c && (c.text === '(pause)' || $('narrate').checked)) {
     await waitRun(250);
-    await sayOther(c.text, '', { id: key }, true);
+    await sayOther(c.text, '', { id: key }, 'stage');
     await waitRun(c.pause || 0);
   } else await waitRun(c && c.pause ? c.pause + 600 : pauseMs);
 }
@@ -872,7 +879,11 @@ async function loadSceneClips() {
         };
         await piece(`${id}~before`);
         const first = await piece(`${id}~1`);
-        for (let k = 2; first && k <= first.of; k++) { await piece(`${id}~${k}`); await piece(`${id}~gap${k - 1}`); }
+        let whole = !!first;
+        for (let k = 2; first && k <= first.of; k++) { if (!(await piece(`${id}~${k}`))) whole = false; await piece(`${id}~gap${k - 1}`); }
+        // A part missing: none of the parts play, and the whole line is read instead (Fable's review).
+        if (first && !whole) for (let k = 1; k <= first.of; k++) sceneClips.delete(`${id}~${k}`);
+        else if (first && !sceneClips.has(id)) mineVoiced++;
       }
       continue;
     }
@@ -1137,7 +1148,8 @@ async function runRecord() {
 // ---------- recorded voices (Script and voices) and phone habits (Settings) ----------
 async function refreshVoicesBox() {
   let clips = [], habits = [];
-  try { clips = await voices.allClips(); habits = await voices.allHabits(); } catch (err) { $('voicesCount').textContent = `Storage unavailable: ${err.message}`; return; }
+  // Stage-action pieces (a "~" in the id) are parts of a line, not lines of their own.
+  try { clips = (await voices.allClips()).filter((c) => !String(c.id).includes("~")); habits = await voices.allHabits(); } catch (err) { $('voicesCount').textContent = `Storage unavailable: ${err.message}`; return; }
   const n = habits.reduce((s, h) => s + h.items.length, 0);
   let kept = null;
   try { kept = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (_) { /* unknown */ }
