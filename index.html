@@ -111,6 +111,16 @@
   /* ...and its results from the last run in gray too (Thomas, 25 Oct 2026). */
   .ln.skipped .result, .ln.skipped .heard { color: var(--muted); }
   .pick-hint { margin: 0 0 8px; }
+  /* Edit lines (Thomas, 25 Oct 2026): the switch beside the hint, and the box under a tapped line. */
+  .pick-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .pick-row .pick-hint { margin: 0; }
+  .pick-row button { flex: none; min-height: 44px; }
+  #editLines[aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); }
+  .ln .pick.edited { color: var(--check); border-color: var(--check); }
+  .editor { margin: 4px 0 12px; padding: 10px; border: 2px solid var(--accent); border-radius: 10px; background: var(--surface); }
+  .editor textarea { width: 100%; font: inherit; font-size: 1.05rem; padding: 8px; border-radius: 8px; border: 1px solid var(--rule);
+                     background: var(--bg); color: var(--ink); box-sizing: border-box; }
+  .editor .controls { margin-top: 8px; }
   .tally { font-weight: 700; margin-top: 8px; }
   /* Between runs: the results list runs full length with the page, and the turn band and stage are
      compact; during a run they are full size and the list scrolls in its own box. */
@@ -268,7 +278,7 @@
   <details id="context">
     <summary>Scene around this line</summary>
     <p id="tally2" class="tally" hidden></p>
-    <p class="note pick-hint">Tap any line to put it in or out of your next run.</p>
+    <div class="pick-row"><p id="pickHint" class="note pick-hint">Tap any line to put it in or out of your next run.</p><button id="editLines" type="button" aria-pressed="false">Edit lines</button></div>
     <div id="script" class="script"></div>
   </details>
   <div class="actions"><button id="runNext2" hidden>Next scene</button><button id="copy">Copy report</button></div>
@@ -343,6 +353,7 @@
     <p><b>Listen:</b> the mic stays off. The cues play, then a pause for your line, about as long as it takes to say it in your head, then the phone's voice reads it. For the car, or anywhere you can't talk out loud. Tap Line to hear it sooner.</p>
     <p><b>Read my line after my turn</b> (in Settings): in a run, the phone's voice says your line as written right after you say it, like a friend holding the script.</p>
     <p><b>Results</b> (with <b>Check my lines</b> on in Settings): after a run, "Scene around this line" shows every line: <span class="ok">&#10003; Matched</span> was right, <span class="check">? Check</span> was probably the phone mishearing you, <span class="bad">&times; Needs work</span> needs work. Tap <b>I said it right</b> when the phone got it wrong. Results stay until your next run.</p>
+    <p><b>Edit lines:</b> in "Scene around this line", tap <b>Edit lines</b>, then tap a line or a stage direction to change its words. Your changes stay on this phone, go into Copy report and Back up, and <b>Back to original</b> undoes one. A changed line is read by the phone's voice until Reginald remakes it in the AI voice.</p>
     <p><b>In or out:</b> tap any line in "Scene around this line" to put it in or out of your next run. Your choices are kept on this phone. Your lines with only stage directions between them are said as one.</p>
     <p><b>Songs:</b> the singing starts out of a run, and lines spoken inside songs stay in. Tap a sung line, or a "Song:" announcement, to put it in or out like any other line. <b>Lines only</b> lists just your spoken lines, each after the end of the line before it, for drilling the words.</p>
   </details>
@@ -352,6 +363,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025u"></script>
+<script type="module" src="app.js?v=20261025v"></script>
 </body>
 </html>

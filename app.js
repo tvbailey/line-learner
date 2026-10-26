@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025u';
-import { parseScript } from './script.js?v=20261025u';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase } from './plan.js?v=20261025u';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025u';
-import * as voices from './voices.js?v=20261025u';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025v';
+import { parseScript } from './script.js?v=20261025v';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261025v';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025v';
+import * as voices from './voices.js?v=20261025v';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -120,6 +120,7 @@ function loadScriptText(text, source) {
   try { parsed = parseScript(text); }
   catch (err) { setStatus(`Script problem: ${err.message}`, '', 'problem'); log(`script problem: ${err.message}`); return false; }
   script = parsed;
+  applyEdits();
   const names = new Set();
   script.scenes.forEach((sc) => sc.items.forEach((it) => { if (it.kind === 'line') names.add(it.who); }));
   me = names.has('THE OLD MAN') ? 'THE OLD MAN' : (names.has('OLD MAN') ? 'OLD MAN' : [...names][0]);
@@ -214,7 +215,11 @@ function renderScript() {
     const it = st.item;
     if (it.kind === 'summary' && st.action === 'show') return; // said only when a run skips (addSkipNotes)
     const next = steps.slice(i + 1).find((s) => s.action !== 'cue' && s.item.kind !== 'direction' && !(s.item.kind === 'summary' && s.action === 'show'));
-    if (it.kind === 'direction' && next && next.item.kind === 'line') { directions.push(it.text); return; }
+    if (it.kind === 'direction' && next && next.item.kind === 'line') {
+      if (st.action === 'stage' && it.dirs) directions.push(...it.dirs);
+      else directions.push({ id: it.id, text: it.text });
+      return;
+    }
     const div = document.createElement('div');
     div.id = 'ln' + i;
     if (it.kind === 'song') {
@@ -231,7 +236,11 @@ function renderScript() {
       div.append(document.createTextNode(`Song: ${it.title}`));
     }
     else if (it.kind === 'summary') { div.className = 'ln song'; div.textContent = `Skipping ahead: ${it.text}`; }
-    else if (it.kind === 'direction') { div.className = 'ln song'; div.textContent = `(${it.text})`; }
+    else if (it.kind === 'direction') {
+      div.className = 'ln song';
+      div.textContent = `(${it.text})`;
+      if (it.id) div.onclick = () => { if (editing && !running) openEditor(it.id, div); };
+    }
     else if (it.kind !== 'line') { div.className = 'ln song'; div.textContent = it.kind === 'songEnd' ? '(end of song)' : '(skip)'; }
     else {
       div.className = 'ln' + (it.who === me ? ' mine' : '') + (st.action === 'skip' ? ' skipped' : '');
@@ -248,12 +257,24 @@ function renderScript() {
         pick.className = 'pick';
         pick.textContent = st.action === 'skip' ? 'Out' : 'In'; // in or out of the next run (shortened, Thomas, 25 Oct 2026)
         div.onclick = (e) => {
-          if (e.target.closest('button') || running) return;
+          if (e.target.closest('button') || e.target.closest('.editor') || running) return;
+          // "Edit lines" on: a tap edits the line, or the stage direction tapped (Thomas, 25 Oct 2026).
+          if (editing) { const d = e.target.closest('.dir'); openEditor(d && d.dataset.id ? d.dataset.id : it.parent || it.id, div); return; }
           (it.joined || [it.parent || it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1));
         };
       }
       if (pick) div.append(pick);
-      for (const d of directions) { const s = document.createElement('span'); s.className = 'dir'; s.textContent = `(${d})`; div.append(s); }
+      const base = it.parent ? sceneItem(it.parent) : it;
+      if (base && base.original !== undefined) { const ed = document.createElement('span'); ed.className = 'pick edited'; ed.textContent = 'Edited'; div.append(ed); }
+      for (const d of directions) {
+        const s = document.createElement('span');
+        s.className = 'dir';
+        s.textContent = `(${d.text})`;
+        if (d.id) s.dataset.id = d.id;
+        const di = d.id && sceneItem(d.id);
+        if (di && di.original !== undefined) s.textContent += ' (edited)';
+        div.append(s);
+      }
       directions = [];
       div.append(who, document.createTextNode(cleanText(it.text)));
     }
@@ -804,13 +825,14 @@ async function readParts(parts) {
 // A stage step (splitAtAction): the action between his lines, or inside one, said by the AI
 // narrator where there is a clip, else by the plain phone voice (Thomas, 25 Oct 2026: "for now you
 // can use the robot voice"), with a short silence either side; "Describe stage action" off, a pause.
-async function stageGap(key, pauseMs, text = '') {
+async function stageGap(key, pauseMs, text = '', full = false) {
   const c = sceneClips.get(key);
   setStatus('Stage action', '', 'written');
   if (!c && text && $('narrate').checked) {
     log('    stage action: said by the phone');
     await waitRun(250);
-    await sayOther(cleanText(nameCase(text)), '', null, 'stage');
+    // A short form, not the whole direction (Thomas, 25 Oct 2026); his own edited words in full.
+    await sayOther(cleanText(nameCase(full ? text : shortDirection(text, 12))), '', null, 'stage');
     await waitRun(400);
     return;
   }
@@ -991,7 +1013,8 @@ function prevLineText(item) {
   for (const sc of script.scenes) {
     const lines = sc.items.filter((x) => x.kind === 'line');
     const k = lines.findIndex((x) => x.id === item.id);
-    if (k >= 0) return k > 0 ? lines[k - 1].text : '';
+    // The script's own words: an edit on the phone doesn't unmatch the next line's clip.
+    if (k >= 0) return k > 0 ? (lines[k - 1].original ?? lines[k - 1].text) : '';
   }
   return '';
 }
@@ -1138,6 +1161,55 @@ async function runRecord() {
   refreshVoicesBox();
 }
 
+// ---------- line edits ----------
+// His own changes to the script's words (Thomas, 25 Oct 2026: "the ability to edit the lines
+// within the app itself"; the director's "right front"). Kept on this phone over the script, by
+// line id, so picks, habits and recordings stay with the line. A recorded voice is tied to the
+// words it was made from, so an edited line is read by the phone's voice until it is remade.
+let editing = false;
+function edits() { try { return JSON.parse(store.get('ll-edits') || '{}'); } catch (_) { return {}; } }
+function applyEdits() {
+  if (!script) return;
+  const e = edits();
+  for (const sc of script.scenes) for (const it of sc.items) {
+    if (!it.id) continue;
+    if (it.original !== undefined) { it.text = it.original; delete it.original; }
+    if (typeof e[it.id] === 'string' && it.text !== undefined && e[it.id] !== it.text) { it.original = it.text; it.text = e[it.id]; }
+  }
+}
+function openEditor(id, row) {
+  const it = sceneItem(id);
+  if (!it || it.text === undefined) return;
+  document.querySelectorAll('.editor').forEach((el) => el.remove());
+  const box = document.createElement('div');
+  box.className = 'editor';
+  const area = document.createElement('textarea');
+  area.value = it.text;
+  area.rows = Math.min(8, Math.max(2, Math.ceil(it.text.length / 32)));
+  area.setAttribute('aria-label', it.kind === 'direction' ? 'Stage direction' : `${it.who}'s line`);
+  const save = (text) => {
+    const e = edits();
+    const orig = it.original ?? it.text;
+    if (text === null || text.trim() === orig.trim()) delete e[id]; else e[id] = text.trim();
+    store.set('ll-edits', JSON.stringify(e));
+    log(`edit: ${it.kind} ${id} ${text === null || !e[id] ? 'back to the script' : 'changed'}`);
+    applyEdits();
+    const top = $('script').scrollTop;
+    renderScript();
+    $('script').scrollTop = top;
+  };
+  const btn = (label, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (cls) b.className = cls; b.onclick = (ev) => { ev.stopPropagation(); fn(); }; return b; };
+  const row2 = document.createElement('div');
+  row2.className = 'controls';
+  row2.append(btn('Save', 'primary', () => save(area.value)), btn('Cancel', '', () => box.remove()));
+  if (it.original !== undefined) row2.append(btn('Back to original', '', () => save(null)));
+  box.append(area, row2);
+  if (it.original !== undefined) { const o = document.createElement('p'); o.className = 'note'; o.textContent = `Script: ${it.original}`; box.append(o); }
+  box.onclick = (ev) => ev.stopPropagation();
+  row.after(box);
+  area.focus();
+}
+
 // ---------- recorded voices (Script and voices) and phone habits (Settings) ----------
 async function refreshVoicesBox() {
   let clips = [], habits = [];
@@ -1166,7 +1238,7 @@ async function refreshVoicesBox() {
 
 async function backupVoices() {
   try {
-    const { file, clips, habits } = await voices.backupFile(script && script.version);
+    const { file, clips, habits } = await voices.backupFile(script && script.version, edits());
     log(`backup: ${clips} recordings, ${habits} habit entries, ${Math.round(file.size / 1024)} KB`);
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: 'Line Runner voices backup' }); setStatus('Backup shared.', '', 'idle'); return; }
@@ -1184,6 +1256,8 @@ async function backupVoices() {
 async function restoreVoices(file) {
   try {
     const r = await voices.restoreFile(file);
+    // A backup's line edits come back too, over what's here (the same rule as recordings).
+    if (r.edits && Object.keys(r.edits).length) { store.set('ll-edits', JSON.stringify({ ...edits(), ...r.edits })); applyEdits(); log(`restore: ${Object.keys(r.edits).length} line edits`); }
     log(`restore: ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries are now on this phone`);
     setStatus(`Restored ${r.clips} of ${r.clipsInFile} recordings and ${r.habits} of ${r.habitsInFile} habit entries.${r.removed ? ` Removed ${r.removed} withdrawn recording${r.removed === 1 ? '' : 's'}.` : ''}`, '', r.clips === r.clipsInFile ? 'idle' : 'problem');
     refreshVoicesBox();
@@ -1232,7 +1306,7 @@ async function runScene() {
     if (action === 'cue') { highlight(i); lastCue = stripDirections(item.text); lastCueItem = item; await sayOther(item.text, item.who, item, false, true); continue; }
     // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
     // Pause holds a stage step at once, its silences too, as in the read-back (Fable's review).
-    if (action === 'stage') { highlight(i); inReadBack = true; try { await stageGap(item.key, 900, item.text); } finally { inReadBack = false; } continue; }
+    if (action === 'stage') { highlight(i); inReadBack = true; try { await stageGap(item.key, 900, item.text, !!item.edited); } finally { inReadBack = false; } continue; }
     if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
     highlight(i);
     if (action === 'speak') {
@@ -1326,6 +1400,8 @@ async function copyReport() {
     `listening restarts: ${restarts}`,
     // His in/out choices (line ids only), so Reginald can see where runs skip.
     `read before: ${$('before').value}; line picks: ${JSON.stringify(Object.fromEntries(picks()))}`,
+    // His edits (line id -> his words), so Reginald can remake those lines in the AI voice.
+    `line edits: ${JSON.stringify(edits())}`,
     '', ...logLines,
   ].join('\n');
   try { await navigator.clipboard.writeText(report); setStatus('Report copied. Paste it to Reginald.', '', 'done'); }
@@ -1439,6 +1515,13 @@ async function setup() {
   $('repeat').onclick = () => { tapCommand = 'repeat'; };
   $('lineBtn').onclick = () => { tapCommand = 'line'; };
   $('copy').onclick = copyReport;
+  $('editLines').onclick = () => {
+    editing = !editing;
+    $('editLines').textContent = editing ? 'Done editing' : 'Edit lines';
+    $('editLines').setAttribute('aria-pressed', editing);
+    $('pickHint').textContent = editing ? 'Tap a line, or a stage direction, to change its words.' : 'Tap any line to put it in or out of your next run.';
+    if (!editing) document.querySelectorAll('.editor').forEach((el) => el.remove());
+  };
   for (const id of REC_BUTTONS) $(id).onclick = () => { if (recTap) { const r = recTap; recTap = null; r(id); } };
   $('backup').onclick = backupVoices;
   $('restoreFile').onchange = () => { const f = $('restoreFile').files[0]; if (f) restoreVoices(f); $('restoreFile').value = ''; };

@@ -32,7 +32,7 @@ test('parseScript reads speaker lines with speaker and text', () => {
 
 test('parseScript keeps a stage direction as its own item, never a line', () => {
   const items = parseScript(SAMPLE).scenes[0].items;
-  assert.deepEqual(items[2], { kind: 'direction', text: 'He kicks the furnace.' });
+  assert.deepEqual({ ...items[2], id: undefined }, { kind: 'direction', text: 'He kicks the furnace.', id: undefined });
 });
 
 test('parseScript reads song start, skip and end markers', () => {
@@ -83,4 +83,11 @@ test('a song marker gets its own stable id, so it can be put in or out of a run 
   const song = parseScript(SAMPLE).scenes[0].items[3];
   assert.ok(song.id, 'song has an id');
   assert.equal(song.id, parseScript(SAMPLE.replace('MOTHER: Dinner is ready.', 'MOTHER: Dinner is ready, dear.')).scenes[0].items[3].id);
+});
+
+test('a stage direction gets a stable id too, so it can be edited on the phone (Thomas, 25 Oct 2026)', () => {
+  const dir = parseScript(SAMPLE).scenes[0].items[2];
+  assert.equal(dir.kind, 'direction');
+  assert.ok(dir.id);
+  assert.equal(dir.id, parseScript(SAMPLE.replace('MOTHER: Dinner is ready.', 'MOTHER: Dinner is ready, dear.')).scenes[0].items[2].id);
 });

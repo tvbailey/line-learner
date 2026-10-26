@@ -1,5 +1,5 @@
 // Reads the plain-text script format (see README) into scenes of items.
-import { normalize } from './core.js?v=20261025u';
+import { normalize } from './core.js?v=20261025v';
 
 // Small stable hash (FNV-1a) so a line's id depends only on its own scene, speaker and words.
 function hash(s) {
@@ -33,7 +33,14 @@ export function parseScript(text) {
     if (/^\[END SONG\]$/i.test(line)) { scene.items.push({ kind: 'songEnd' }); return; }
     // A short summary of the stretch that follows, said when a run skips it (24 Oct 2026).
     if ((m = line.match(/^\[SKIPPED:\s*(.+?)\]$/i))) { scene.items.push({ kind: 'summary', text: m[1].trim() }); return; }
-    if ((m = line.match(/^\((.*)\)$/))) { scene.items.push({ kind: 'direction', text: m[1].trim() }); return; }
+    // Directions get ids as well, so he can edit one on the phone (Thomas, 25 Oct 2026).
+    if ((m = line.match(/^\((.*)\)$/))) {
+      const key = `${scene.title}|direction|${normalize(m[1]).join(' ')}`;
+      const count = (seen.get(key) || 0) + 1;
+      seen.set(key, count);
+      scene.items.push({ kind: 'direction', id: hash(`${key}|${count}`), text: m[1].trim() });
+      return;
+    }
     if ((m = line.match(/^([A-Z0-9][A-Z0-9 .,&'-]*?):\s*(.+)$/))) {
       const who = m[1].trim();
       const sung = m[2].startsWith('~');

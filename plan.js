@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261025u';
+import { stripDirections, cleanText } from './core.js?v=20261025v';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -241,7 +241,9 @@ export function splitAtAction(steps, me) {
       let k = i;
       while (k < steps.length && steps[k].action === 'show' && steps[k].item.kind === 'direction') k++;
       if (his(steps[k])) {
-        out.push({ action: 'stage', item: { kind: 'direction', text: steps.slice(i, k).map((s) => s.item.text).join(' '), key: `${steps[k].item.id}~before` } });
+        const dirs = steps.slice(i, k).map((s) => ({ id: s.item.id, text: s.item.text }));
+        // `edited`: he changed a direction's words on the phone, so they are said in full.
+        out.push({ action: 'stage', item: { kind: 'direction', text: dirs.map((d) => d.text).join(' '), dirs, edited: steps.slice(i, k).some((s) => s.item.original !== undefined), key: `${steps[k].item.id}~before` } });
         i = k - 1;
         continue;
       }
@@ -264,7 +266,7 @@ export function splitAtAction(steps, me) {
     let from = 0;
     cuts.forEach((group, k) => {
       out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${k + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from, group[0]).join('').trim() } });
-      out.push({ action: 'stage', item: { kind: 'direction', text: group.map((c) => pieces[c].slice(1, -1).trim()).join(' '), key: `${st.item.id}~gap${k + 1}` } });
+      out.push({ action: 'stage', item: { kind: 'direction', text: group.map((c) => pieces[c].slice(1, -1).trim()).join(' '), edited: st.item.original !== undefined, key: `${st.item.id}~gap${k + 1}` } });
       from = group[group.length - 1] + 1;
     });
     out.push({ ...st, item: { ...st.item, id: `${st.item.id}~${cuts.length + 1}`, parent: st.item.id, of: cuts.length + 1, text: pieces.slice(from).join('').trim() } });

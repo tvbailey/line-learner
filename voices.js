@@ -97,13 +97,14 @@ function fromBase64(b64, type) {
 }
 
 // The backup is a text file (so the phone's Share menu will take it) holding JSON.
-export async function backupFile(scriptVersion) {
+export async function backupFile(scriptVersion, edits = {}) {
   const clips = await allClips();
   const habits = await allHabits();
   const out = {
     format: 'line-runner-backup', formatVersion: 1, created: new Date().toISOString(), scriptVersion,
     clips: await Promise.all(clips.map(async (c) => ({ ...c, blob: undefined, data: await toBase64(c.blob) }))),
     habits,
+    edits, // his line edits (app.js), restored with the recordings
   };
   const day = new Date().toISOString().slice(0, 10);
   return { file: new File([JSON.stringify(out)], `line-runner-voices-${day}.txt`, { type: 'text/plain' }), clips: clips.length, habits: habits.length };
@@ -148,6 +149,7 @@ export async function restoreFile(file) {
     clips: (data.clips || []).filter((c) => ids.has(c.id)).length, clipsInFile: (data.clips || []).length,
     habits: (data.habits || []).filter((h) => keys.has(h.key)).length, habitsInFile: (data.habits || []).length,
     removed: withdraw.filter((id) => !ids.has(id)).length,
+    edits: data.edits && typeof data.edits === "object" ? data.edits : null,
   };
 }
 
