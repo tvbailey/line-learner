@@ -1,4 +1,4 @@
-import { stripDirections, cleanText } from './core.js?v=20261025v';
+import { stripDirections, cleanText } from './core.js?v=20261025w';
 // Turns a scene's items into practice steps for one role:
 //   speak  - the phone reads it (someone else's spoken line, a song title)
 //   listen - the actor says it
@@ -87,6 +87,7 @@ export function linesOnly(items, me, left = new Set()) {
   let started = false;   // one of his lines has been shown
   let last = null;       // the last line anyone said or sang since his last spoken line
   let dir = null;        // the last stage direction since then
+  let dirFull = false;   // ...and it is his own edit, shown whole
   let song = null;       // a song that started since then
   let whole = null;      // inside a song left out whole (SKIP_WHOLE): its name
   let after = null;      // such a song just ended: its name
@@ -95,7 +96,8 @@ export function linesOnly(items, me, left = new Set()) {
       if (it.kind === 'songEnd') { after = whole; whole = null; last = null; dir = null; song = null; }
       continue;
     }
-    if (it.kind === 'direction') { dir = it.text; continue; }
+    // A direction he edited on the phone is shown in his words in full (Fable's review, 25 Oct 2026).
+    if (it.kind === 'direction') { dir = it.text; dirFull = it.original !== undefined; continue; }
     if (it.kind === 'song') {
       if (skippedWhole(it)) { whole = it.title.replace(/^#\S+\s*/, ''); continue; }
       song = it.title.replace(/^#\S+\s*/, ''); continue;
@@ -118,7 +120,7 @@ export function linesOnly(items, me, left = new Set()) {
     } else if (dir && !started) {
       out.push({ kind: 'context', text: directionEnd(dir, 25) });
     } else if (dir) {
-      out.push({ kind: 'break', text: shortDirection(dir) });
+      out.push({ kind: 'break', text: dirFull ? dir : shortDirection(dir) });
     }
     out.push({ kind: 'mine', id: it.id, who: it.who, text: plainLine(it.text) });
     started = true;

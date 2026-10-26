@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025v';
-import { parseScript } from './script.js?v=20261025v';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261025v';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025v';
-import * as voices from './voices.js?v=20261025v';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025w';
+import { parseScript } from './script.js?v=20261025w';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261025w';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025w';
+import * as voices from './voices.js?v=20261025w';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -200,6 +200,7 @@ function renderScript() {
   $('linesScene').value = $('scene').value;
   if (lines) renderLines(scene);
   const recording = $('mode').value === 'record';
+  document.body.classList.toggle('record-mode', recording); // no line editing in Record mode
   // Record mode takes the lines a run would read aloud at these settings, plus his own.
   if (recording) steps = recordSteps(scene.items, me, { skipSongs: true, keep: Number($('before').value), picks: picks() }).map((r) => ({ action: r.mine ? 'listen' : 'speak', item: r.item }));
   // The singing always starts out; "Dialogue only" went once any line or song could be tapped in or out (Thomas, 25 Oct 2026).
@@ -1188,6 +1189,8 @@ function openEditor(id, row) {
   area.rows = Math.min(8, Math.max(2, Math.ceil(it.text.length / 32)));
   area.setAttribute('aria-label', it.kind === 'direction' ? 'Stage direction' : `${it.who}'s line`);
   const save = (text) => {
+    // A blank line would stall a run (Fable's review): cutting a line is a tap Out, not an edit.
+    if (text !== null && !text.trim()) { hint.textContent = 'A line needs some words. To cut it, tap Done editing, then tap the line Out.'; return; }
     const e = edits();
     const orig = it.original ?? it.text;
     if (text === null || text.trim() === orig.trim()) delete e[id]; else e[id] = text.trim();
@@ -1203,7 +1206,9 @@ function openEditor(id, row) {
   row2.className = 'controls';
   row2.append(btn('Save', 'primary', () => save(area.value)), btn('Cancel', '', () => box.remove()));
   if (it.original !== undefined) row2.append(btn('Back to original', '', () => save(null)));
-  box.append(area, row2);
+  const hint = document.createElement('p');
+  hint.className = 'note';
+  box.append(area, row2, hint);
   if (it.original !== undefined) { const o = document.createElement('p'); o.className = 'note'; o.textContent = `Script: ${it.original}`; box.append(o); }
   box.onclick = (ev) => ev.stopPropagation();
   row.after(box);

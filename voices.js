@@ -149,7 +149,8 @@ export async function restoreFile(file) {
     clips: (data.clips || []).filter((c) => ids.has(c.id)).length, clipsInFile: (data.clips || []).length,
     habits: (data.habits || []).filter((h) => keys.has(h.key)).length, habitsInFile: (data.habits || []).length,
     removed: withdraw.filter((id) => !ids.has(id)).length,
-    edits: data.edits && typeof data.edits === "object" ? data.edits : null,
+    // Only text edits come back (Fable's review): anything else in a hand-changed file is left out.
+    edits: data.edits && typeof data.edits === "object" ? Object.fromEntries(Object.entries(data.edits).filter(([, v]) => typeof v === "string" && v.trim())) : null,
   };
 }
 

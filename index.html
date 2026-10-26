@@ -121,6 +121,8 @@
   .editor textarea { width: 100%; font: inherit; font-size: 1.05rem; padding: 8px; border-radius: 8px; border: 1px solid var(--rule);
                      background: var(--bg); color: var(--ink); box-sizing: border-box; }
   .editor .controls { margin-top: 8px; }
+  /* Record mode takes taps for recording, not editing (Fable's review). */
+  body.record-mode #editLines { display: none; }
   .tally { font-weight: 700; margin-top: 8px; }
   /* Between runs: the results list runs full length with the page, and the turn band and stage are
      compact; during a run they are full size and the list scrolls in its own box. */
@@ -363,6 +365,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025v"></script>
+<script type="module" src="app.js?v=20261025w"></script>
 </body>
 </html>
