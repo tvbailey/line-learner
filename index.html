@@ -232,6 +232,7 @@
   <section id="linesView" class="lines-view" hidden>
     <label for="linesScene">Scene</label>
     <select id="linesScene"></select>
+    <label class="setting skip-scene"><input id="skipScene2" type="checkbox"><span>Skip this scene<small class="note">Next scene goes past it</small></span></label>
     <div class="duo">
       <button type="button" id="cover" aria-pressed="false">Cover my lines</button>
       <button type="button" id="linesRun">Drill this scene</button>
@@ -297,15 +298,15 @@
     <button type="button" data-mode="listen" aria-pressed="false"><span class="step">2</span> Drill</button>
     <button type="button" data-mode="run" aria-pressed="true"><span class="step">3</span> Run</button>
   </div>
-  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run</option><option value="listen">Drill</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
+  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run</option><option value="listen">Drill</option><option value="record">Record voices</option><option value="lines">Read</option></select>
 
   <!-- The folded sections, cut from six to four plus the log, each with one job (Thomas, 25 Oct 2026,
        after Fable's and Gemini 3.8 Flash's reviews). -->
   <details id="settings">
     <summary>Settings</summary>
     <h3>During a run</h3>
-    <label class="setting"><input id="hideMine" type="checkbox"><span>Hide my line during a run<small class="note">You see "Your line" instead of the words. Say or tap Line to see them: the first few words, then the whole line.</small></span></label>
-    <label class="setting"><input id="readBack" type="checkbox" checked><span>Read my line after my turn<small class="note">The phone's voice says your line as written, right after your turn, in a run and in Listen. It never says whether you got it right. Turn it off when you know your lines.</small></span></label>
+    <label class="setting"><input id="hideMine" type="checkbox"><span>Hide my line<small class="note">In Drill and Run. You see "Your line" instead of the words. Say or tap Line to see them: the first few words, then the whole line.</small></span></label>
+    <label class="setting"><input id="readBack" type="checkbox" checked><span>Read my line after my turn<small class="note">The phone's voice says your line as written, right after your turn, in Drill and Run. It never says whether you got it right. Turn it off when you know your lines.</small></span></label>
     <label class="setting"><input id="narrate" type="checkbox" checked><span>Describe stage action<small class="note">Where something happens on stage in the middle of your lines, a quiet narrator says what, with a pause. Off: just the pause.</small></span></label>
     <label class="setting"><input id="checkLines" type="checkbox"><span>Check my lines<small class="note">Marks each line Matched, Check or Needs work after a run. The phone often mishears fast or big delivery, so it starts off.</small></span></label>
     <label for="before">Read before each of your lines</label>
@@ -372,6 +373,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261028a"></script>
+<script type="module" src="app.js?v=20261028b"></script>
 </body>
 </html>
