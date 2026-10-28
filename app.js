@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261025x';
-import { parseScript } from './script.js?v=20261025x';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261025x';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261025x';
-import * as voices from './voices.js?v=20261025x';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261028a';
+import { parseScript } from './script.js?v=20261028a';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261028a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261028a';
+import * as voices from './voices.js?v=20261028a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -132,6 +132,7 @@ function loadScriptText(text, source) {
   $('linesScene').innerHTML = sel.innerHTML;
   $('linesScene').value = sel.value;
   $('role').textContent = me;
+  labelScenes();
   log(`script loaded (${source}): ${script.scenes.length} scene(s), version ${script.version || 'none'}, you are ${me}`);
   renderScript();
   return true;
@@ -161,9 +162,25 @@ function renderLines(scene) {
 }
 
 // Next scene, from the top (Thomas, 11 Oct 2026: one tap to move on).
+// Scenes he marked "Skip this scene" (by title), which Next scene goes past (Thomas, 28 Oct 2026).
+function skippedScenes() { try { return new Set(JSON.parse(store.get('ll-skip-scenes') || '[]')); } catch (_) { return new Set(); } }
+function nextSceneIndex() {
+  if (!script) return -1;
+  const skip = skippedScenes();
+  for (let n = Number($('scene').value) + 1; n < script.scenes.length; n++) if (!skip.has(script.scenes[n].title)) return n;
+  return -1;
+}
+function labelScenes() {
+  const skip = skippedScenes();
+  [...$('scene').options].forEach((o, n) => { o.textContent = script.scenes[n].title + (skip.has(script.scenes[n].title) ? ' (skipped)' : ''); });
+  $('linesScene').innerHTML = $('scene').innerHTML;
+  $('linesScene').value = $('scene').value;
+  $('skipScene').checked = skip.has(script.scenes[Number($('scene').value) || 0].title);
+}
+
 function nextLinesScene() {
-  const n = Number($('scene').value) + 1;
-  if (!script.scenes[n]) return;
+  const n = nextSceneIndex();
+  if (n < 0) return;
   $('scene').value = n;
   $('scene').onchange();
   scrollTo(0, 0);
@@ -758,7 +775,7 @@ function stopRun() {
 
 // After a run, one tap opens the next scene at its top, ready to Start (Thomas, 24 Oct 2026).
 function showRunNext(show) {
-  const last = !script || Number($('scene').value) >= script.scenes.length - 1;
+  const last = nextSceneIndex() < 0;
   $('runNext').hidden = !show || last;
   $('runNext2').hidden = !show || last; // a second one just above Copy report
 }
@@ -885,6 +902,12 @@ async function loadSceneClips() {
   let cues = 0;
   let mine = 0, mineVoiced = 0, recorded = 0;
   for (const st of steps) {
+    // A "Skipping ahead" note's narrator clip, made for these exact words.
+    if (st.action === 'note') {
+      const key = `note~${st.item.text}`;
+      try { const c = await voices.getClip(key); if (c && c.source === 'ai' && c.text === `Skipping ahead. ${st.item.text}`) sceneClips.set(key, c); } catch (_) { /* no storage */ }
+      continue;
+    }
     // The narration for a stage step, made for the line it belongs to.
     if (st.action === 'stage') {
       const owner = sceneItem(st.item.key.split('~')[0]);
@@ -1295,7 +1318,7 @@ async function runScene() {
   const checking = !listenOnly && $('checkLines').checked;
   let listenWith = 'Google';
   runEngine = 'google';
-  if (listenOnly) listenWith = 'nobody (Listen mode, mic off)';
+  if (listenOnly) listenWith = 'nobody (Drill, mic off)';
   else if (!SIM && engine() !== 'google') {
     setStatus('Getting the on-phone listener ready...', '', 'idle');
     const ok = await startMoonScene();
@@ -1312,7 +1335,8 @@ async function runScene() {
     // The phone's plain voice says what a skip leaves out (Thomas, 24 Oct 2026: try the robot voice first).
     // Pause holds a stage step at once, its silences too, as in the read-back (Fable's review).
     if (action === 'stage') { highlight(i); inReadBack = true; try { await stageGap(item.key, 900, item.text, !!item.edited); } finally { inReadBack = false; } continue; }
-    if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); await sayOther(`Skipping ahead. ${item.text}`); continue; }
+    // An AI narrator clip where there is one for this note (voicer/notes.py, Thomas, 28 Oct 2026), else the phone's voice.
+    if (action === 'note') { highlight(i); log(`skipping ahead: ${item.text.split(/\s+/).length} words`); const key = `note~${item.text}`; await sayOther(`Skipping ahead. ${item.text}`, '', sceneClips.has(key) ? { id: key } : null); continue; }
     highlight(i);
     if (action === 'speak') {
       if (item.kind === 'song') { await sayOther(`Song. ${item.title.replace(/^#\S+\s*/, '')}.`); continue; }
@@ -1442,12 +1466,13 @@ async function setup() {
     if (running) { $('mode').value = store.get('ll-mode') || 'run'; syncMode(); return; }
     store.set('ll-mode', $('mode').value); syncMode(); renderScript();
   };
-  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); if (b.dataset.mode === 'listen' && $('mode').value === 'listen') { scrollTo(0, 0); setStatus('Listen: tap Start. The mic stays off.', '', 'idle'); } if (b.dataset.mode === 'record' && $('mode').value === 'record') { scrollTo(0, 0); setStatus('Record voices: tap Start, then read each line.', '', 'idle'); } }; });
+  document.querySelectorAll('[data-mode]').forEach((b) => { b.onclick = () => { $('mode').value = b.dataset.mode; $('mode').onchange(); if (b.dataset.mode === 'lines') scrollTo(0, 0); if (b.dataset.mode === 'listen' && $('mode').value === 'listen') { scrollTo(0, 0); setStatus('Drill: tap Start. The mic stays off.', '', 'idle'); } if (b.dataset.mode === 'record' && $('mode').value === 'record') { scrollTo(0, 0); setStatus('Record voices: tap Start, then read each line.', '', 'idle'); } }; });
   syncMode();
   // Lines only has its own scene list at the top; it and the one below stay the same.
   $('linesScene').onchange = () => { $('scene').value = $('linesScene').value; $('scene').onchange(); };
   $('linesNext').onclick = nextLinesScene;
-  $('linesRun').onclick =() => { $('mode').value = 'run'; $('mode').onchange(); scrollTo(0, 0); };
+  // Read's next step is Drill (Thomas, 28 Oct 2026: read, then drill, then run).
+  $('linesRun').onclick = () => { $('mode').value = 'listen'; $('mode').onchange(); scrollTo(0, 0); };
   const setCover = (on) => {
     $('linesView').classList.toggle('covered', on);
     $('cover').setAttribute('aria-pressed', on);
@@ -1491,7 +1516,15 @@ async function setup() {
   $('checkLines').onchange = () => store.set('ll-check-lines', $('checkLines').checked ? 'on' : 'off');
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
-  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); if (!running) { renderScript(); previewScene(); } };
+  $('scene').onchange = () => { store.set('ll-scene', $('scene').value); labelScenes(); if (!running) { renderScript(); previewScene(); } };
+  $('skipScene').onchange = () => {
+    const skip = skippedScenes();
+    const title = script.scenes[Number($('scene').value) || 0].title;
+    if ($('skipScene').checked) skip.add(title); else skip.delete(title);
+    store.set('ll-skip-scenes', JSON.stringify([...skip]));
+    labelScenes();
+    showRunNext(!running);
+  };
   $('file').onchange = async () => {
     const f = $('file').files[0];
     if (!f) return;
@@ -1506,8 +1539,8 @@ async function setup() {
   // to the top of the page; the lower one, used while reading, goes to the top of "Scene around
   // this line".
   const nextScene = (toScript) => {
-    const n = Number($('scene').value) + 1;
-    if (!script.scenes[n] || running) return;
+    const n = nextSceneIndex();
+    if (n < 0 || running) return;
     $('scene').value = n;
     $('scene').onchange();
     setStatus('Tap Start');

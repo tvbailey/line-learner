@@ -166,6 +166,8 @@
   .duo button { min-height: 64px; }
   .duo.trio { grid-template-columns: 1fr 1fr 1fr; }
   .duo.trio button { padding-left: 6px; padding-right: 6px; }
+  .duo.trio .step { display: inline-block; min-width: 1.4em; font-weight: 800; opacity: .7; }
+  .skip-scene { min-height: 44px; margin: 4px 0 0; }
   [data-mode][aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); padding: 9px 13px; }
   [data-mode][aria-pressed="true"]::before { content: "\2713\00a0"; font-weight: 900; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -232,7 +234,7 @@
     <select id="linesScene"></select>
     <div class="duo">
       <button type="button" id="cover" aria-pressed="false">Cover my lines</button>
-      <button type="button" id="linesRun">Run this scene</button>
+      <button type="button" id="linesRun">Drill this scene</button>
     </div>
     <p id="coverNote" class="note" hidden>Say each line, then tap it to check.</p>
     <div id="linesList" class="lines-list"></div>
@@ -250,6 +252,7 @@
   <div class="scene-pick">
     <label for="scene" class="sr-only">Scene</label>
     <select id="scene" aria-label="Scene"></select>
+    <label class="setting skip-scene"><input id="skipScene" type="checkbox"><span>Skip this scene<small class="note">Next scene goes past it</small></span></label>
   </div>
   <!-- Record mode: a bar fixed to the bottom of the screen with the line and the buttons, so
        nothing needs scrolling (Thomas, 7 Oct 2026: scrolling between the top and the script). -->
@@ -288,11 +291,13 @@
   <div class="role"><span class="eyebrow">Your part</span><b id="role">&nbsp;</b></div>
   <label id="modeLabel">Practice mode</label>
   <div class="duo trio" role="group" aria-labelledby="modeLabel">
-    <button type="button" data-mode="run" aria-pressed="true">Run the scene</button>
-    <button type="button" data-mode="listen" aria-pressed="false">Listen</button>
-    <button type="button" data-mode="lines" aria-pressed="false">Lines only</button>
+    <!-- In the order he learns a scene (Thomas, 28 Oct 2026): read the words aloud, drill them
+         cue by cue, then run it with the phone checking. -->
+    <button type="button" data-mode="lines" aria-pressed="false"><span class="step">1</span> Read</button>
+    <button type="button" data-mode="listen" aria-pressed="false"><span class="step">2</span> Drill</button>
+    <button type="button" data-mode="run" aria-pressed="true"><span class="step">3</span> Run</button>
   </div>
-  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run the scene</option><option value="listen">Listen</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
+  <select id="mode" class="sr-only" aria-hidden="true" tabindex="-1"><option value="run">Run</option><option value="listen">Drill</option><option value="record">Record voices</option><option value="lines">Lines only</option></select>
 
   <!-- The folded sections, cut from six to four plus the log, each with one job (Thomas, 25 Oct 2026,
        after Fable's and Gemini 3.8 Flash's reviews). -->
@@ -351,13 +356,15 @@
   <details>
     <summary>Help</summary>
     <p><b>Made-up words</b> (the film's invented curse words) are checked by how they sound, since the phone can't spell them; they're underlined on screen when it's your line.</p>
-    <p><b>A run:</b> the phone reads the other parts (recorded voices where there are some) and listens for yours. Say <b>"line"</b> for a prompt, "pause", "resume" or "repeat" any time, or use the buttons. When it skips two or more lines it says <b>"Skipping ahead"</b> and what you missed.</p>
-    <p><b>Listen:</b> the mic stays off. The cues play, then a pause for your line, about as long as it takes to say it in your head, then the phone's voice reads it. For the car, or anywhere you can't talk out loud. Tap Line to hear it sooner.</p>
-    <p><b>Read my line after my turn</b> (in Settings): in a run, the phone's voice says your line as written right after you say it, like a friend holding the script.</p>
+    <p><b>The three steps,</b> in the order you learn a scene: <b>1 Read</b> lists just your lines, each after the end of the cue, to say aloud until the words feel natural; <b>2 Drill</b> plays the scene with the mic off and a pause for each of your lines, then reads it back (cover your line with Hide my line); <b>3 Run</b> listens to you and, with Check my lines on, marks how you did.</p>
+    <p><b>Run:</b> the phone reads the other parts (recorded voices where there are some) and listens for yours. Say <b>"line"</b> for a prompt, "pause", "resume" or "repeat" any time, or use the buttons. When it skips two or more lines it says <b>"Skipping ahead"</b> and what you missed.</p>
+    <p><b>Drill:</b> the mic stays off. The cues play, then a pause for your line, about as long as it takes to say it in your head, then the phone's voice reads it. For the car, or anywhere you can't talk out loud. Tap Line to hear it sooner.</p>
+    <p><b>Read my line after my turn</b> (in Settings): in Drill and Run, a voice says your line as written right after you say it, like a friend holding the script.</p>
     <p><b>Results</b> (with <b>Check my lines</b> on in Settings): after a run, "Scene around this line" shows every line: <span class="ok">&#10003; Matched</span> was right, <span class="check">? Check</span> was probably the phone mishearing you, <span class="bad">&times; Needs work</span> needs work. Tap <b>I said it right</b> when the phone got it wrong. Results stay until your next run.</p>
     <p><b>Edit lines:</b> in "Scene around this line", tap <b>Edit lines</b>, then tap a line or a stage direction to change its words. Your changes stay on this phone, go into Copy report and Back up, and <b>Back to original</b> undoes one. A changed line is read by the phone's voice until Reginald remakes it in the AI voice.</p>
-    <p><b>In or out:</b> tap any line in "Scene around this line" to put it in or out of your next run. Your choices are kept on this phone. Your lines with only stage directions between them are said as one.</p>
-    <p><b>Songs:</b> the singing starts out of a run, and lines spoken inside songs stay in. Tap a sung line, or a "Song:" announcement, to put it in or out like any other line. <b>Lines only</b> lists just your spoken lines, each after the end of the line before it, for drilling the words.</p>
+    <p><b>In or out:</b> tap any line in "Scene around this line" to put it in or out of your next run. Your choices are kept on this phone. Where stage action falls between or inside your lines, Drill and Run say it between your turns.</p>
+    <p><b>Songs:</b> the singing starts out of a run, and lines spoken inside songs stay in. Tap a sung line, or a "Song:" announcement, to put it in or out like any other line.</p>
+    <p><b>Skip this scene</b> (under the scene list): Next scene goes past it, for a scene you have no lines in.</p>
   </details>
 
   <details>
@@ -365,6 +372,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261025x"></script>
+<script type="module" src="app.js?v=20261028a"></script>
 </body>
 </html>
