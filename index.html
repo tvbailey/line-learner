@@ -112,7 +112,7 @@
   .ln.skipped .result, .ln.skipped .heard { color: var(--muted); }
   .pick-hint { margin: 0 0 8px; }
   /* Edit lines (Thomas, 25 Oct 2026): the switch beside the hint, and the box under a tapped line. */
-  .pick-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .pick-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
   .pick-row .pick-hint { margin: 0; }
   .pick-row button { flex: none; min-height: 44px; }
   #editLines[aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); }
@@ -167,7 +167,7 @@
   .duo.trio { grid-template-columns: 1fr 1fr 1fr; }
   .duo.trio button { padding-left: 6px; padding-right: 6px; }
   .duo.trio .step { display: inline-block; min-width: 1.4em; font-weight: 800; opacity: .7; }
-  .skip-scene { min-height: 44px; margin: 4px 0 0; }
+  .skip-scene { min-height: 44px; margin: 0; }
   [data-mode][aria-pressed="true"] { background: var(--accent-bg); border: 2px solid var(--accent); padding: 9px 13px; }
   [data-mode][aria-pressed="true"]::before { content: "\2713\00a0"; font-weight: 900; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -232,7 +232,6 @@
   <section id="linesView" class="lines-view" hidden>
     <label for="linesScene">Scene</label>
     <select id="linesScene"></select>
-    <label class="setting skip-scene"><input id="skipScene2" type="checkbox"><span>Skip this scene<small class="note">Next scene goes past it</small></span></label>
     <div class="duo">
       <button type="button" id="cover" aria-pressed="false">Cover my lines</button>
       <button type="button" id="linesRun">Drill this scene</button>
@@ -253,7 +252,6 @@
   <div class="scene-pick">
     <label for="scene" class="sr-only">Scene</label>
     <select id="scene" aria-label="Scene"></select>
-    <label class="setting skip-scene"><input id="skipScene" type="checkbox"><span>Skip this scene<small class="note">Next scene goes past it</small></span></label>
   </div>
   <!-- Record mode: a bar fixed to the bottom of the screen with the line and the buttons, so
        nothing needs scrolling (Thomas, 7 Oct 2026: scrolling between the top and the script). -->
@@ -284,7 +282,9 @@
   <details id="context">
     <summary>Scene around this line</summary>
     <p id="tally2" class="tally" hidden></p>
-    <div class="pick-row"><p id="pickHint" class="note pick-hint">Tap any line to put it in or out of your next run.</p><button id="editLines" type="button" aria-pressed="false">Edit lines</button></div>
+    <p id="pickHint" class="note pick-hint">Tap any line to put it in or out of your next run.</p>
+    <!-- Skip this scene sits beside Edit lines (Thomas, 28 Oct 2026: not under the scene list). -->
+    <div class="pick-row"><button id="editLines" type="button" aria-pressed="false">Edit lines</button><label class="setting skip-scene"><input id="skipScene" type="checkbox"><span>Skip this scene<small class="note">Next scene goes past it</small></span></label></div>
     <div id="script" class="script"></div>
   </details>
   <div class="actions"><button id="runNext2" hidden>Next scene</button><button id="copy">Copy report</button></div>
@@ -365,7 +365,7 @@
     <p><b>Edit lines:</b> in "Scene around this line", tap <b>Edit lines</b>, then tap a line or a stage direction to change its words. Your changes stay on this phone, go into Copy report and Back up, and <b>Back to original</b> undoes one. A changed line is read by the phone's voice until Reginald remakes it in the AI voice.</p>
     <p><b>In or out:</b> tap any line in "Scene around this line" to put it in or out of your next run. Your choices are kept on this phone. Where stage action falls between or inside your lines, Drill and Run say it between your turns.</p>
     <p><b>Songs:</b> the singing starts out of a run, and lines spoken inside songs stay in. Tap a sung line, or a "Song:" announcement, to put it in or out like any other line.</p>
-    <p><b>Skip this scene</b> (under the scene list): Next scene goes past it, for a scene you have no lines in.</p>
+    <p><b>Skip this scene</b> (in "Scene around this line", beside Edit lines): Next scene goes past it, in every mode, for a scene you have no lines in.</p>
   </details>
 
   <details>
@@ -373,6 +373,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261028b"></script>
+<script type="module" src="app.js?v=20261028c"></script>
 </body>
 </html>

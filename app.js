@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261028b';
-import { parseScript } from './script.js?v=20261028b';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261028b';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261028b';
-import * as voices from './voices.js?v=20261028b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261028c';
+import { parseScript } from './script.js?v=20261028c';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261028c';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261028c';
+import * as voices from './voices.js?v=20261028c';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -174,7 +174,7 @@ function labelScenes() {
   [...$('scene').options].forEach((o, n) => { o.textContent = script.scenes[n].title + (skip.has(script.scenes[n].title) ? ' (skipped)' : ''); });
   $('linesScene').innerHTML = $('scene').innerHTML;
   $('linesScene').value = $('scene').value;
-  $('skipScene').checked = $('skipScene2').checked = skip.has(script.scenes[Number($('scene').value) || 0].title);
+  $('skipScene').checked = skip.has(script.scenes[Number($('scene').value) || 0].title);
 }
 
 function nextLinesScene() {
@@ -1516,8 +1516,8 @@ async function setup() {
   const savedGap = store.get('ll-gap');
   if (savedGap) { $('gap').value = savedGap; $('gapVal').textContent = savedGap; }
   $('scene').onchange = () => { store.set('ll-scene', $('scene').value); labelScenes(); if (!running) { renderScript(); previewScene(); } };
-  // Two copies of the box, one under each scene list (Read has its own; Fable's review).
-  $('skipScene').onchange = $('skipScene2').onchange = (e) => {
+  // The box sits in "Scene around this line", beside Edit lines (Thomas, 28 Oct 2026).
+  $('skipScene').onchange = (e) => {
     const skip = skippedScenes();
     const title = script.scenes[Number($('scene').value) || 0].title;
     if (e.target.checked) skip.add(title); else skip.delete(title);
