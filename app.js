@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031e';
-import { parseScript } from './script.js?v=20261031e';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031e';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031e';
-import * as voices from './voices.js?v=20261031e';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031f';
+import { parseScript } from './script.js?v=20261031f';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031f';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031f';
+import * as voices from './voices.js?v=20261031f';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -777,6 +777,10 @@ let jumpTo = null;
 const backable = (st) => ['cue', 'speak', 'listen'].includes(st.action) && (st.item.kind === 'line' || st.item.kind === 'song');
 function stepTapped(dir) {
   if (!running || stopRequested || runStep < 0) return; // not at a line yet (Opus's review)
+  // In Drill's pause for his line, Next ends the pause and his line is read now, as the old Line
+  // button did (Thomas, 31 Oct 2026: "sometimes there's almost too much of a pause"); a second tap
+  // moves on to the next line.
+  if (dir > 0 && inThinkPause && jumpTo === null) { setPaused(false); tapCommand = 'line'; return; }
   const from = jumpTo !== null ? jumpTo : runStep;
   let t = from + dir;
   while (t >= 0 && t < steps.length && !backable(steps[t])) t += dir;
@@ -902,7 +906,12 @@ const sceneItem = (id) => { for (const sc of script.scenes) { const it = sc.item
 // Listen mode's turn for his line: the mic stays off, and he gets about the time it takes to say it
 // in his head before the phone reads it. Pause holds the clock; Line ends the wait; saying "repeat" says the
 // cue again.
+let inThinkPause = false;
 async function listenWait(ms) {
+  inThinkPause = true;
+  try { await thinkPause(ms); } finally { inThinkPause = false; }
+}
+async function thinkPause(ms) {
   tapCommand = null; // a Line or Repeat tapped during the cue must not skip this pause (Fable's review)
   setStatus('Your line. Say it to yourself.', '', 'think');
   let left = ms;
