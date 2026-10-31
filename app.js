@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031b';
-import { parseScript } from './script.js?v=20261031b';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031b';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031b';
-import * as voices from './voices.js?v=20261031b';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031c';
+import { parseScript } from './script.js?v=20261031c';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031c';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031c';
+import * as voices from './voices.js?v=20261031c';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -131,7 +131,6 @@ function loadScriptText(text, source) {
   if (saved && script.scenes[Number(saved)]) sel.value = saved;
   $('linesScene').innerHTML = $('linesScene2').innerHTML = sel.innerHTML;
   $('linesScene').value = $('linesScene2').value = sel.value;
-  $('role').textContent = me;
   labelScenes();
   log(`script loaded (${source}): ${script.scenes.length} scene(s), version ${script.version || 'none'}, you are ${me}`);
   renderScript();
@@ -1479,18 +1478,7 @@ async function setup() {
   // The same picker at the bottom of Read (Thomas, 31 Oct 2026); the new scene starts at the top.
   $('linesScene2').onchange = () => { $('scene').value = $('linesScene2').value; $('scene').onchange(); scrollTo(0, 0); };
   $('linesNext').onclick = nextLinesScene;
-  // Read's next step is Drill (Thomas, 28 Oct 2026: read, then drill, then run).
-  $('linesRun').onclick = () => { $('mode').value = 'listen'; $('mode').onchange(); scrollTo(0, 0); };
-  const setCover = (on) => {
-    $('linesView').classList.toggle('covered', on);
-    $('cover').setAttribute('aria-pressed', on);
-    $('cover').textContent = on ? 'Show my lines' : 'Cover my lines';
-    $('coverNote').hidden = !on;
-    document.querySelectorAll('.lo-mine.shown').forEach((el) => el.classList.remove('shown'));
-    store.set('ll-cover', on ? 'on' : 'off');
-  };
-  $('cover').onclick = () => setCover(!$('linesView').classList.contains('covered'));
-  setCover(store.get('ll-cover') === 'on');
+  // Cover my lines and Drill this scene left Read (Thomas, 31 Oct 2026); the mode buttons sit there now.
   // Dark unless the phone asks for light; the button overrides either way and is remembered.
   const themeLabel = () => {
     const light = document.documentElement.dataset.theme === 'light'
