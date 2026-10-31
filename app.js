@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261028c';
-import { parseScript } from './script.js?v=20261028c';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261028c';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261028c';
-import * as voices from './voices.js?v=20261028c';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031a';
+import { parseScript } from './script.js?v=20261031a';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031a';
+import * as voices from './voices.js?v=20261031a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -195,16 +195,18 @@ function picks() {
   } catch (_) { return new Map(); }
 }
 const leftOut = () => new Set([...picks()].filter(([, v]) => v === 'out').map(([k]) => k));
-function togglePick(id, nowIn, redraw = true) {
+// A tap always flips what the row shows. Clearing a saved pick instead used to fall back to the
+// scene's default, which could match what was already shown, so a tap did nothing and he had to
+// tap again (Thomas, 31 Oct 2026). `row` is the tapped row: it stays put on screen after the redraw.
+function togglePick(id, nowIn, redraw = true, row = null) {
   const p = picks();
-  const cur = p.get(id);
-  if (nowIn) { if (cur === 'in') p.delete(id); else p.set(id, 'out'); }
-  else { if (cur === 'out') p.delete(id); else p.set(id, 'in'); }
+  p.set(id, nowIn ? 'out' : 'in');
   store.set('ll-picks', JSON.stringify(Object.fromEntries(p)));
   if (!redraw) return;
-  const box = $('script'), top = box.scrollTop;
+  const key = row && row.dataset.key, top = row && row.getBoundingClientRect().top;
   renderScript();
-  box.scrollTop = top;
+  const again = key && $('script').querySelector(`[data-key="${CSS.escape(key)}"]`);
+  if (again) scrollBy(0, again.getBoundingClientRect().top - top);
 }
 
 function renderScript() {
@@ -222,6 +224,9 @@ function renderScript() {
   // The singing always starts out; "Dialogue only" went once any line or song could be tapped in or out (Thomas, 25 Oct 2026).
   else steps = addSkipNotes(splitAtAction(pickLines(planScene(scene.items, me, { skipSongs: true }), picks(), me, Number($('before').value)), me));
   $('sceneName').textContent = scene.title;
+  // "Recorded" marks are looked up one by one after a redraw; keep the ones already shown so rows
+  // don't grow back a moment later and push the page around (Thomas, 31 Oct 2026).
+  const marked = new Set([...$('script').querySelectorAll('.rec-mark')].map((b) => b.parentElement.dataset.key));
   $('script').innerHTML = '';
   if (running || !lastRun) showLastResult('', '');
   // A stage direction rides on the line after it, as a small note, instead of a row of its own
@@ -239,6 +244,7 @@ function renderScript() {
     }
     const div = document.createElement('div');
     div.id = 'ln' + i;
+    if (it.id) div.dataset.key = it.id;
     if (it.kind === 'song') {
       // The "Song." announcement taps in or out like a line (Thomas, 25 Oct 2026).
       div.className = 'ln song' + (st.action === 'skip' ? ' skipped' : '');
@@ -248,7 +254,7 @@ function renderScript() {
         pick.className = 'pick';
         pick.textContent = st.action === 'skip' ? 'Out' : 'In';
         div.append(pick);
-        div.onclick = () => { if (!running) togglePick(it.id, st.action !== 'skip'); };
+        div.onclick = () => { if (!running) togglePick(it.id, st.action !== 'skip', true, div); };
       }
       div.append(document.createTextNode(`Song: ${it.title}`));
     }
@@ -277,7 +283,7 @@ function renderScript() {
           if (e.target.closest('button') || e.target.closest('.editor') || running) return;
           // "Edit lines" on: a tap edits the line, or the stage direction tapped (Thomas, 25 Oct 2026).
           if (editing) { const d = e.target.closest('.dir'); openEditor(d && d.dataset.id ? d.dataset.id : it.parent || it.id, div); return; }
-          (it.joined || [it.parent || it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1));
+          (it.joined || [it.parent || it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1, div));
         };
       }
       if (pick) div.append(pick);
@@ -294,6 +300,7 @@ function renderScript() {
       }
       directions = [];
       div.append(who, document.createTextNode(cleanText(it.text)));
+      if (marked.has(it.id)) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); div.append(b); }
     }
     $('script').append(div);
   });

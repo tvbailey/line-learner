@@ -101,7 +101,8 @@
   .ln.now { outline: 3px solid var(--accent); outline-offset: -3px; }
   .ln.skipped { color: var(--muted); border-left: 4px dashed var(--rule); }
   .ln.mine.skipped { background: transparent; }
-  .ln.tappable { cursor: pointer; }
+  /* No double-tap zoom or text selection on a quick second tap (Thomas, 31 Oct 2026: the screen jumped). */
+  .ln.tappable { cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
   /* In or out of the next run: a readable label, apart from the results marks (25 Oct 2026). */
   .ln .pick { float: right; margin-left: 8px; font-size: .875rem; font-weight: 650; padding: 2px 10px; border-radius: 999px;
               border: 1px solid var(--rule); color: var(--ink); background: var(--bg); }
@@ -373,6 +374,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261028c"></script>
+<script type="module" src="app.js?v=20261031a"></script>
 </body>
 </html>
