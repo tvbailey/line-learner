@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031d';
-import { parseScript } from './script.js?v=20261031d';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031d';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031d';
-import * as voices from './voices.js?v=20261031d';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031e';
+import { parseScript } from './script.js?v=20261031e';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031e';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031e';
+import * as voices from './voices.js?v=20261031e';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -768,20 +768,22 @@ let runEngine = 'google';
 function gapMs() { return Number($('gap').value) * 1000; }
 
 // Back steps the run back one line per tap, from wherever it is, and plays on from there (Thomas,
-// 31 Oct 2026: "every time I hit it, it goes back one"). It cuts off whatever is playing; the run
-// loop picks up `backTo`. A line here is a cue, someone's line, his own, or a song announcement.
+// 31 Oct 2026: "every time I hit it, it goes back one"); Next is its mirror, one line forward per
+// tap (Thomas, 31 Oct 2026: to undo too many Backs, or get to the middle of a long scene). Either
+// cuts off whatever is playing; the run loop picks up `jumpTo`. A line here is a cue, someone's
+// line, his own, or a song announcement.
 let runStep = -1;
-let backTo = null;
+let jumpTo = null;
 const backable = (st) => ['cue', 'speak', 'listen'].includes(st.action) && (st.item.kind === 'line' || st.item.kind === 'song');
-function backTapped() {
+function stepTapped(dir) {
   if (!running || stopRequested || runStep < 0) return; // not at a line yet (Opus's review)
-  const from = backTo !== null ? backTo : runStep;
-  let t = from - 1;
-  while (t >= 0 && !backable(steps[t])) t--;
+  const from = jumpTo !== null ? jumpTo : runStep;
+  let t = from + dir;
+  while (t >= 0 && t < steps.length && !backable(steps[t])) t += dir;
   if (t < 0) t = steps.findIndex(backable); // already at the first line: play it again
-  if (t < 0) return;
-  backTo = t;
-  log(`back to line ${t}`);
+  if (t < 0 || t >= steps.length) return; // already at the last line: Next does nothing
+  jumpTo = t;
+  log(`${dir < 0 ? 'back' : 'on'} to line ${t}`);
   setPaused(false);
   voices.stopClip();
   if ('speechSynthesis' in window) speechSynthesis.cancel();
@@ -814,8 +816,8 @@ async function sayOther(text, who = '', item = null, written = false, mineNext =
   inCue = true;
   try {
     for (;;) {
-      while (paused && running && !stopRequested && backTo === null) await new Promise((r) => setTimeout(r, 150));
-      if (!running || stopRequested || backTo !== null) return;
+      while (paused && running && !stopRequested && jumpTo === null) await new Promise((r) => setTimeout(r, 150));
+      if (!running || stopRequested || jumpTo !== null) return;
       if (written) setStatus(written === 'stage' ? 'Stage action' : 'Your line as written', '', 'written');
       else setStatus((who ? `${who} is speaking` : 'Reading the cue...') + (mineNext ? '. Your line is next.' : ''), '', 'cue');
       const clip = item && sceneClips.get(item.id);
@@ -824,8 +826,8 @@ async function sayOther(text, who = '', item = null, written = false, mineNext =
         try { await voices.playClip(clip); played = true; }
         catch (err) { log(`recorded voice failed (${err.message}); using the phone's voice`); }
       }
-      if (!played && backTo === null) await speak(cleanText(stripDirections(text)), who);
-      if (!paused || backTo !== null) return;
+      if (!played && jumpTo === null) await speak(cleanText(stripDirections(text)), who);
+      if (!paused || jumpTo !== null) return;
     }
   } finally { inCue = false; }
 }
@@ -860,7 +862,7 @@ async function readBack(item) {
 async function readParts(parts) {
   // The plain voice, not his character's, where there is no clip (Fable's review).
   for (const p of parts) {
-    if (!running || stopRequested || backTo !== null) return;
+    if (!running || stopRequested || jumpTo !== null) return;
     await sayOther(stripDirections(p.text), '', sceneClips.has(p.id) ? p : null, true);
   }
 }
@@ -889,7 +891,7 @@ async function stageGap(key, pauseMs, text = '', full = false) {
 
 // Waits during a run; Pause holds the clock and Stop ends the wait.
 async function waitRun(ms) {
-  while (ms > 0 && running && !stopRequested && backTo === null) {
+  while (ms > 0 && running && !stopRequested && jumpTo === null) {
     await new Promise((r) => setTimeout(r, 100));
     if (!paused) ms -= 100;
   }
@@ -904,7 +906,7 @@ async function listenWait(ms) {
   tapCommand = null; // a Line or Repeat tapped during the cue must not skip this pause (Fable's review)
   setStatus('Your line. Say it to yourself.', '', 'think');
   let left = ms;
-  while (left > 0 && running && !stopRequested && backTo === null) {
+  while (left > 0 && running && !stopRequested && jumpTo === null) {
     const cmd = tapCommand; tapCommand = null;
     if (cmd === 'pause' || cmd === 'resume') {
       setPaused(cmd === 'pause');
@@ -982,7 +984,7 @@ function awaitMyLine(expected, soundOnly = false, stretch = false) {
     const tick = setInterval(async () => {
       if (stopRequested) { clearInterval(tick); stopListening(); resolve({ heard: '', prompted: false, phoneRestarts: 0 }); return; }
       if (busy) return;
-      if (backTo !== null) { clearInterval(tick); stopListening(); resolve({ heard: '', prompted: false, phoneRestarts: 0, back: true }); return; }
+      if (jumpTo !== null) { clearInterval(tick); stopListening(); resolve({ heard: '', prompted: false, phoneRestarts: 0, back: true }); return; }
       if (speaking) return;
       let cmd = tapCommand; tapCommand = null;
       let utterance = '';
@@ -1354,12 +1356,12 @@ async function runScene() {
   }
   const rec = await loadSceneClips();
   log(`scene start: ${script.scenes[Number($('scene').value) || 0].title}; wait ${$('gap').value}s; listening with ${listenWith}${listenWith === 'Google' ? `; continuous ${$('continuous').checked}` : ''}; recorded voices for ${rec.recorded} of ${rec.cues} cue lines; your lines in the AI voice: ${rec.mineVoiced} of ${rec.mine}`);
-  backTo = null; runStep = -1;
-  for (let i = 0; (i < steps.length || backTo !== null) && running && !stopRequested; i++) {
-    // Back was tapped during the last step: carry on from the line it chose, with the cue that
+  jumpTo = null; runStep = -1;
+  for (let i = 0; (i < steps.length || jumpTo !== null) && running && !stopRequested; i++) {
+    // Back or Next was tapped during the last step: carry on from the line it chose, with the cue that
     // "repeat" says set to the last line read before it (Opus's review).
-    if (backTo !== null) {
-      i = backTo; backTo = null;
+    if (jumpTo !== null) {
+      i = jumpTo; jumpTo = null;
       const before = steps.slice(0, i).reverse().find((s) => (s.action === 'cue' || s.action === 'speak') && s.item.kind === 'line');
       lastCueItem = before ? before.item : null;
       lastCue = before ? stripDirections(before.item.text) : '';
@@ -1387,7 +1389,7 @@ async function runScene() {
     if (listenOnly) {
       await listenWait(thinkMs(item.text));
       if (stopRequested) break;
-      if (backTo !== null) continue;
+      if (jumpTo !== null) continue;
       log(`line ${i}: listen`);
       // The switch counts in Listen too (Thomas, 25 Oct 2026: off, it read back anyway); off, the
       // pause is all there is.
@@ -1567,25 +1569,21 @@ async function setup() {
   if (!(savedScript && loadScriptText(savedScript, 'saved on this phone'))) loadScriptText(DEMO, 'practice scene');
   $('gap').oninput = () => { $('gapVal').textContent = $('gap').value; store.set('ll-gap', $('gap').value); };
   $('start').onclick = () => (running ? stopRun() : runScene());
-  // Next scene works any time a scene isn't running (Thomas, 25 Oct 2026). The one by Start goes
-  // to the top of the page; the lower one, used while reading, goes to the top of "Scene around
-  // this line".
-  const nextScene = (toScript) => {
+  // Next scene works any time a scene isn't running (Thomas, 25 Oct 2026). Both go to the top of
+  // the page; the lower one no longer opens "Scene around this line" (Thomas, 31 Oct 2026).
+  const nextScene = () => {
     const n = nextSceneIndex();
     if (n < 0 || running) return;
     $('scene').value = n;
     $('scene').onchange();
     setStatus('Tap Start');
-    if (!toScript) { scrollTo(0, 0); return; }
-    $('context').open = true;
-    $('script').scrollTop = 0;
-    $('context').scrollIntoView({ block: 'start' });
+    scrollTo(0, 0);
   };
-  $('runNext').onclick = () => nextScene(false);
-  $('runNext2').onclick = () => nextScene(true);
+  $('runNext').onclick = nextScene;
+  $('runNext2').onclick = nextScene;
   $('pause').onclick = pauseTapped;
-  $('repeat').onclick = backTapped; // was Repeat cue; saying "repeat" still repeats the cue
-  $('lineBtn').onclick = () => { tapCommand = 'line'; };
+  $('repeat').onclick = () => stepTapped(-1); // was Repeat cue; saying "repeat" still repeats the cue
+  $('lineBtn').onclick = () => stepTapped(1); // was Line; saying "line" still gives a prompt
   $('copy').onclick = copyReport;
   $('editLines').onclick = () => {
     editing = !editing;
