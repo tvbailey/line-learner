@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031f';
-import { parseScript } from './script.js?v=20261031f';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031f';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031f';
-import * as voices from './voices.js?v=20261031f';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031g';
+import { parseScript } from './script.js?v=20261031g';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031g';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031g';
+import * as voices from './voices.js?v=20261031g';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -204,7 +204,11 @@ function togglePick(id, nowIn, redraw = true, row = null) {
   if (!redraw) return;
   const key = row && row.dataset.key, top = row && row.getBoundingClientRect().top;
   renderScript();
-  const again = key && $('script').querySelector(`[data-key="${CSS.escape(key)}"]`);
+  // A split line's part and the whole line swap ids when it goes in or out (Cody's review): find either.
+  const base = key && key.split('~')[0];
+  const again = key && ($('script').querySelector(`[data-key="${CSS.escape(key)}"]`)
+    || $('script').querySelector(`[data-key="${CSS.escape(base)}"]`)
+    || $('script').querySelector(`[data-key^="${CSS.escape(base + '~')}"]`));
   if (again) scrollBy(0, again.getBoundingClientRect().top - top);
 }
 
@@ -319,11 +323,15 @@ async function markRecorded() {
     let clip = null;
     try { clip = await voices.getClip(st.item.id); } catch (_) { return; }
     const el = $('ln' + i);
-    if (!el || el.querySelector('.rec-mark')) continue;
+    if (!el) continue;
     // A part of a split line: its clip is made for the whole line's text (Fable's review).
     const parent = st.item.parent && sceneItem(st.item.parent);
     const fits = parent ? !!clip && clip.source === 'ai' && clip.parentText === parent.text && clip.of === st.item.of : voices.clipFits(clip, st.item, prevLineText(st.item));
-    if (fits) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
+    // A mark kept through the redraw is checked again, and goes if the clip no longer fits an
+    // edited line or a restored backup (Cody's review, 31 Oct 2026).
+    const had = el.querySelector('.rec-mark');
+    if (fits && !had) { const b = badge('ok', 'Recorded'); b.classList.add('rec-mark'); el.append(b); }
+    else if (!fits && had) had.remove();
   }
 }
 
@@ -780,7 +788,8 @@ function stepTapped(dir) {
   // In Drill's pause for his line, Next ends the pause and his line is read now, as the old Line
   // button did (Thomas, 31 Oct 2026: "sometimes there's almost too much of a pause"); a second tap
   // moves on to the next line.
-  if (dir > 0 && inThinkPause && jumpTo === null) { setPaused(false); tapCommand = 'line'; return; }
+  // The pause counts as ended at the first tap, so a quick second tap moves on (Cody's review).
+  if (dir > 0 && inThinkPause && jumpTo === null) { inThinkPause = false; setPaused(false); tapCommand = 'line'; return; }
   const from = jumpTo !== null ? jumpTo : runStep;
   let t = from + dir;
   while (t >= 0 && t < steps.length && !backable(steps[t])) t += dir;
@@ -909,7 +918,7 @@ const sceneItem = (id) => { for (const sc of script.scenes) { const it = sc.item
 let inThinkPause = false;
 async function listenWait(ms) {
   inThinkPause = true;
-  try { await thinkPause(ms); } finally { inThinkPause = false; }
+  try { return await thinkPause(ms); } finally { inThinkPause = false; }
 }
 async function thinkPause(ms) {
   tapCommand = null; // a Line or Repeat tapped during the cue must not skip this pause (Fable's review)
@@ -921,7 +930,7 @@ async function thinkPause(ms) {
       setPaused(cmd === 'pause');
       log(paused ? 'paused' : 'resumed');
       setStatus(paused ? 'Paused. Tap Resume.' : 'Your line. Say it to yourself.', '', paused ? 'paused' : 'think');
-    } else if (cmd === 'line') return;
+    } else if (cmd === 'line') return true;
     else if (cmd === 'repeat' && lastCueItem) {
       log('repeating the cue');
       await sayOther(lastCueItem.text, lastCueItem.who, lastCueItem);
@@ -1396,13 +1405,14 @@ async function runScene() {
     }
     const expected = stripDirections(item.text);
     if (listenOnly) {
-      await listenWait(thinkMs(item.text));
+      const asked = await listenWait(thinkMs(item.text));
       if (stopRequested) break;
       if (jumpTo !== null) continue;
       log(`line ${i}: listen`);
       // The switch counts in Listen too (Thomas, 25 Oct 2026: off, it read back anyway); off, the
       // pause is all there is.
-      if ($('readBack').checked) await readBack(item);
+      // Next in the pause asks for his line now, whatever the switch says (Cody's review).
+      if ($('readBack').checked || asked) await readBack(item);
       continue;
     }
     const soundOnly = isSoundOnly(expected);

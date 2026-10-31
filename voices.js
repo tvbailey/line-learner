@@ -212,8 +212,13 @@ function speechBounds(buf) {
   return { start: Math.max(0, first / buf.sampleRate - pad), end: Math.min(buf.duration, last / buf.sampleRate + pad) };
 }
 let playing = null; // the clip now sounding, so Pause can cut it off
+// Counts stops, so a clip still being decoded when Pause, Back or Next is tapped never starts
+// (Cody's review, 31 Oct 2026).
+let stops = 0;
 export async function playClip(clip) {
+  const asOf = stops;
   const buf = await decodeClip(clip);
+  if (stops !== asOf) return;
   const { start, end } = speechBounds(buf);
   const ac = audio();
   return new Promise((resolve) => {
@@ -230,5 +235,6 @@ export async function playClip(clip) {
 }
 // Stops the clip mid-line (Thomas, 24 Oct 2026: Pause should pause whoever is speaking).
 export function stopClip() {
+  stops++;
   if (playing) { try { playing.stop(); } catch (_) { /* already stopped */ } }
 }
