@@ -231,6 +231,12 @@
 
   <!-- Lines only: his spoken lines in order, each after a short cue (Thomas, 10 Oct 2026). -->
   <section id="linesView" class="lines-view" hidden>
+    <!-- The mode buttons again at the top of Read, so he needn't scroll down to switch (Thomas, 31 Oct 2026). -->
+    <div class="duo trio" role="group" aria-label="Practice mode">
+      <button type="button" data-mode="lines" aria-pressed="false"><span class="step">1</span> Read</button>
+      <button type="button" data-mode="listen" aria-pressed="false"><span class="step">2</span> Drill</button>
+      <button type="button" data-mode="run" aria-pressed="true"><span class="step">3</span> Run</button>
+    </div>
     <label for="linesScene">Scene</label>
     <select id="linesScene"></select>
     <div class="duo">
@@ -240,6 +246,9 @@
     <p id="coverNote" class="note" hidden>Say each line, then tap it to check.</p>
     <div id="linesList" class="lines-list"></div>
     <button type="button" id="linesNext" class="primary lines-next">Next scene</button>
+    <!-- The scene picker again at the bottom, so he can pick a scene from either end (Thomas, 31 Oct 2026). -->
+    <label for="linesScene2" style="margin-top: 20px; display: block;">Scene</label>
+    <select id="linesScene2"></select>
   </section>
 
   <div class="controls" id="runControls">
@@ -374,6 +383,6 @@
     <div id="log"></div>
   </details>
 </main>
-<script type="module" src="app.js?v=20261031a"></script>
+<script type="module" src="app.js?v=20261031b"></script>
 </body>
 </html>

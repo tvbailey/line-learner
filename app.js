@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031a';
-import { parseScript } from './script.js?v=20261031a';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031a';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031a';
-import * as voices from './voices.js?v=20261031a';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031b';
+import { parseScript } from './script.js?v=20261031b';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031b';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031b';
+import * as voices from './voices.js?v=20261031b';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -129,8 +129,8 @@ function loadScriptText(text, source) {
   script.scenes.forEach((sc, n) => { const o = document.createElement('option'); o.value = n; o.textContent = sc.title; sel.append(o); });
   const saved = store.get('ll-scene');
   if (saved && script.scenes[Number(saved)]) sel.value = saved;
-  $('linesScene').innerHTML = sel.innerHTML;
-  $('linesScene').value = sel.value;
+  $('linesScene').innerHTML = $('linesScene2').innerHTML = sel.innerHTML;
+  $('linesScene').value = $('linesScene2').value = sel.value;
   $('role').textContent = me;
   labelScenes();
   log(`script loaded (${source}): ${script.scenes.length} scene(s), version ${script.version || 'none'}, you are ${me}`);
@@ -172,8 +172,8 @@ function nextSceneIndex() {
 function labelScenes() {
   const skip = skippedScenes();
   [...$('scene').options].forEach((o, n) => { o.textContent = script.scenes[n].title + (skip.has(script.scenes[n].title) ? ' (skipped)' : ''); });
-  $('linesScene').innerHTML = $('scene').innerHTML;
-  $('linesScene').value = $('scene').value;
+  $('linesScene').innerHTML = $('linesScene2').innerHTML = $('scene').innerHTML;
+  $('linesScene').value = $('linesScene2').value = $('scene').value;
   $('skipScene').checked = skip.has(script.scenes[Number($('scene').value) || 0].title);
 }
 
@@ -215,7 +215,7 @@ function renderScript() {
   document.body.classList.toggle('lines-mode', lines);
   document.body.classList.toggle('listen-mode', $('mode').value === 'listen'); // no spoken commands with the mic off
   $('linesView').hidden = !lines;
-  $('linesScene').value = $('scene').value;
+  $('linesScene').value = $('linesScene2').value = $('scene').value;
   if (lines) renderLines(scene);
   const recording = $('mode').value === 'record';
   document.body.classList.toggle('record-mode', recording); // no line editing in Record mode
@@ -1476,6 +1476,8 @@ async function setup() {
   syncMode();
   // Lines only has its own scene list at the top; it and the one below stay the same.
   $('linesScene').onchange = () => { $('scene').value = $('linesScene').value; $('scene').onchange(); };
+  // The same picker at the bottom of Read (Thomas, 31 Oct 2026); the new scene starts at the top.
+  $('linesScene2').onchange = () => { $('scene').value = $('linesScene2').value; $('scene').onchange(); scrollTo(0, 0); };
   $('linesNext').onclick = nextLinesScene;
   // Read's next step is Drill (Thomas, 28 Oct 2026: read, then drill, then run).
   $('linesRun').onclick = () => { $('mode').value = 'listen'; $('mode').onchange(); scrollTo(0, 0); };
