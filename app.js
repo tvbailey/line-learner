@@ -1,10 +1,10 @@
 // Line Runner: browser glue around core.js.
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
-import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261031g';
-import { parseScript } from './script.js?v=20261031g';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261031g';
-import { diffSpans, learnable, applyHabits } from './habits.js?v=20261031g';
-import * as voices from './voices.js?v=20261031g';
+import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261101a';
+import { parseScript } from './script.js?v=20261101a';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261101a';
+import { diffSpans, learnable, applyHabits } from './habits.js?v=20261101a';
+import * as voices from './voices.js?v=20261101a';
 
 // An original practice scene (not from any licensed script), used until a real script is loaded.
 const DEMO = `# Practice scene (made up)
@@ -212,6 +212,15 @@ function togglePick(id, nowIn, redraw = true, row = null) {
   if (again) scrollBy(0, again.getBoundingClientRect().top - top);
 }
 
+// A tap during a run, even a paused one, can't change the lines it is reading; say so on the row
+// instead of doing nothing (Thomas, 1 Nov 2026: "it wasn't responding").
+function stopFirst(pick) {
+  if (!pick || pick.dataset.was) return;
+  pick.dataset.was = pick.textContent;
+  pick.textContent = 'Stop the run first';
+  setTimeout(() => { pick.textContent = pick.dataset.was; delete pick.dataset.was; }, 2500);
+}
+
 function renderScript() {
   const scene = script.scenes[Number($('scene').value) || 0];
   const lines = $('mode').value === 'lines';
@@ -235,6 +244,10 @@ function renderScript() {
   // A stage direction rides on the line after it, as a small note, instead of a row of its own
   // (Thomas, 4 Oct 2026: separate rows made the script feel chopped into sections).
   let directions = [];
+  // A skipped line read again as the cue just before one of his (planScene's 'cue' step) is heard,
+  // so its row says In; tapping it Out drops the cue too (Thomas, 1 Nov 2026: a sung line marked
+  // Out played anyway).
+  const cues = new Set(steps.filter((s) => s.action === 'cue').map((s) => s.item.id));
   steps.forEach((st, i) => {
     if (st.action === 'cue') return;
     const it = st.item;
@@ -257,7 +270,7 @@ function renderScript() {
         pick.className = 'pick';
         pick.textContent = st.action === 'skip' ? 'Out' : 'In';
         div.append(pick);
-        div.onclick = () => { if (!running) togglePick(it.id, st.action !== 'skip', true, div); };
+        div.onclick = () => { if (running) { stopFirst(pick); return; } togglePick(it.id, st.action !== 'skip', true, div); };
       }
       div.append(document.createTextNode(`Song: ${it.title}`));
     }
@@ -269,7 +282,8 @@ function renderScript() {
     }
     else if (it.kind !== 'line') { div.className = 'ln song'; div.textContent = it.kind === 'songEnd' ? '(end of song)' : '(skip)'; }
     else {
-      div.className = 'ln' + (it.who === me ? ' mine' : '') + (st.action === 'skip' ? ' skipped' : '');
+      const out = st.action === 'skip' && !cues.has(it.id);
+      div.className = 'ln' + (it.who === me ? ' mine' : '') + (out ? ' skipped' : '');
       const who = document.createElement('span');
       who.className = 'who';
       who.textContent = it.who + (it.sung ? ' (sung)' : '');
@@ -281,12 +295,13 @@ function renderScript() {
         div.classList.add('tappable');
         pick = document.createElement('span');
         pick.className = 'pick';
-        pick.textContent = st.action === 'skip' ? 'Out' : 'In'; // in or out of the next run (shortened, Thomas, 25 Oct 2026)
+        pick.textContent = out ? 'Out' : 'In'; // in or out of the next run (shortened, Thomas, 25 Oct 2026)
         div.onclick = (e) => {
-          if (e.target.closest('button') || e.target.closest('.editor') || running) return;
+          if (e.target.closest('button') || e.target.closest('.editor')) return;
+          if (running) { stopFirst(pick); return; }
           // "Edit lines" on: a tap edits the line, or the stage direction tapped (Thomas, 25 Oct 2026).
           if (editing) { const d = e.target.closest('.dir'); openEditor(d && d.dataset.id ? d.dataset.id : it.parent || it.id, div); return; }
-          (it.joined || [it.parent || it.id]).forEach((id, n, all) => togglePick(id, st.action !== 'skip', n === all.length - 1, div));
+          (it.joined || [it.parent || it.id]).forEach((id, n, all) => togglePick(id, !out, n === all.length - 1, div));
         };
       }
       if (pick) div.append(pick);
