@@ -2,7 +2,7 @@
 // Everything here is about Chrome's speech APIs; the testable logic lives in core.js.
 import { compareLine, detectCommand, promptText, assembleTranscript, isLineFinished, lineEndHeard, stripStale, stripDirections, isSoundOnly, cleanText, madeUpWords, voiceFor, thinkMs } from './core.js?v=20261101a';
 import { parseScript } from './script.js?v=20261101a';
-import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261101a';
+import { planScene, trimCues, recordSteps, linesOnly, pickLines, splitAtAction, addSkipNotes, nameCase, shortDirection } from './plan.js?v=20261104a';
 import { diffSpans, learnable, applyHabits } from './habits.js?v=20261101a';
 import * as voices from './voices.js?v=20261101a';
 
@@ -882,9 +882,19 @@ function pauseTapped() {
 async function readBack(item) {
   if ($('hideMine').checked) $('currentLine').textContent = cleanText(item.text);
   const parts = (item.joined || [item.id]).map((id) => sceneItem(id) || item);
-  log(`  read back as written (${parts.filter((p) => sceneClips.has(p.id) || sceneClips.has(`${p.id}~1`)).length} of ${parts.length} in the AI voice)`);
+  log(`  read back as written (${parts.filter((p) => sceneClips.has(p.id)).length} of ${parts.length} in the AI voice)`);
   inReadBack = true;
   try { await readParts(parts); } finally { inReadBack = false; }
+}
+
+// Stage action inside his line, with words before and after it: he may stop mid-line to do it, so
+// the listener waits longer for the line's end, as for a joined stretch (Opus's review, 4 Nov 2026).
+const BEAT = /^(a\s+)?((brief(ly)?|short|long)\s+)?(beat|pause|pauses)\.?$|^(quickly|slowly|softly|louder)\.?$/i;
+function hasActionInside(text) {
+  const pieces = String(text || '').split(/(\([^)]*\))/);
+  const words = (x) => /[A-Za-z0-9]/.test(stripDirections(x));
+  return pieces.some((p, n) => n % 2 && !BEAT.test(p.slice(1, -1).trim())
+    && words(pieces.slice(0, n).join('')) && words(pieces.slice(n + 1).join('')));
 }
 
 async function readParts(parts) {
@@ -895,7 +905,7 @@ async function readParts(parts) {
   }
 }
 
-// A stage step (splitAtAction): the action between his lines, or inside one, said by the AI
+// A stage step (splitAtAction): the action between two of his lines, said by the AI
 // narrator where there is a clip, else by the plain phone voice (Thomas, 25 Oct 2026: "for now you
 // can use the robot voice"), with a short silence either side; "Describe stage action" off, a pause.
 async function stageGap(key, pauseMs, text = '', full = false) {
@@ -1431,7 +1441,7 @@ async function runScene() {
       continue;
     }
     const soundOnly = isSoundOnly(expected);
-    const { heard, prompted, phoneRestarts, back } = await awaitMyLine(expected, soundOnly, !!item.joined);
+    const { heard, prompted, phoneRestarts, back } = await awaitMyLine(expected, soundOnly, !!item.joined || hasActionInside(item.text));
     if (stopRequested) break;
     if (back) continue;
     // Habits he taught the phone for this line and this listener are turned back into script words first.
